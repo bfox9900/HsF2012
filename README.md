@@ -11,3 +11,29 @@ and return stacks.
 
 I have written the LIB\ files here so they can create a new HsForth system if you have the HsForth Kernel.
 The end result will be HSF2012.EXE which includes the assembler and a lots free space to play with.
+
+INSTRUCTIONS:
+------------
+
+1. In your HsForth root directory create a folder called LIB
+
+Assumed directory:
+       ...\"anydir"\HSFORTH.EXE
+
+       ...\"anydir"\LIB\...
+                       ALL SOURCE FILES...
+
+
+2. Move all the hsf2000 files to the directory ..\LIB\
+
+3. Start the HSFORTH kernel called HSFORTH.EXE from the directory that contains \LIB\
+
+4. In the HSFORTH console type:  FLOAD FORTH12.HSF
+   a) the HsFORTH Path will be set to \LIB by this file so everything will load correctly
+
+5. Press enter key when prompted by the compiling process.
+
+6. When the compile completes, start the program at the command line with:   HSF2012 <enter>
+
+
+HSF2012.EXE is NOT compatible with the HSForth Auto Optimizer NOR any other original HsForth source files
