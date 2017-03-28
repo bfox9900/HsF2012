@@ -1,0 +1,54 @@
+\ random.hsf   random number generator for hsf2000
+
+\ Nov 9 2014 replaced HSForth SAL with LSHIFT (ANS/ISO Forth)
+
+HEX
+
+   1 value A
+   2 value B
+03FF value MX
+
+: RANDOM  ( -- n)
+        a b +  mx over u<
+        if 
+            mx 1+ -
+        then
+
+        2* mx over u<
+        if
+            mx -
+        then   b to a
+             dup to b ;
+
+
+: RANDOMIZE  ( seed1 seed2 #bits -- )
+           2 max 0F min 1 swap lshift 1- to mx
+           mx mod to a
+           mx mod to b
+           5 0
+           do
+              random drop
+           loop ;
+
+
+: RND ( n -- n )               \ return a random number between 0 .. n-1
+        RANDOM SWAP MOD ;
+
+100 100  16 RANDOMIZE
+
+decimal
+
+0 [IF]
+\ pseudo random numbers from COMP.LANG.FORTH June 13 2016
+
+  variable rnd
+
+: reset_seed 0ABCDEF1 rnd ! ; reset_seed
+
+: rand \ -- u
+  rnd @ 08088405 * 1+ dup rnd ! ;
+
+: random \ u1 -- u2
+  rand um* nip ;
+  
+  [THEN]

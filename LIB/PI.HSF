@@ -1,0 +1,10 @@
+\ define PI for 16 bit integer calculations
+
+:PI  ( n -- n')  355 113 */ ;
+
+exit
+
+\ usage: you must scale your results appropriatley
+
+10 PI .  31
+10000 PI . 31415

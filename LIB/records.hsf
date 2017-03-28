@@ -1,0 +1,11 @@
+\ simple records in Forth
+
+: record[ 0 ;
+: ]record: create , does> @ * + ;
+: field:  create over , + does> @ + ;
+
+record[
+  4 field: col0
+  4 field: col1
+  4 field: last-col
+]record: my-row

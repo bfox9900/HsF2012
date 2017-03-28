@@ -1,0 +1,85 @@
+\ SCAN.HSF     scan an array for number                  25FEB91 FOX
+
+\ These words are like HSF2000 CMEMBER? and MEMBER? but are for use with other
+\ data formats where you do not have a count byte or word at the start of
+\ the block of memory you want to scan. For example they can be used to search
+\ zero strings for the ending 0 or to scan an integer array from another
+\ language.
+
+
+\ For 20 years I thought these were like cmember? in Hsforth but NO!
+\ the len returned starts from the end of the string and goes backwards.
+
+CODE SCAN ( adr len c -- adr' len' )   \ scan string for 'c', return new string adr&len
+                AX   BX MOV.              \ AX has char
+                CX       POP.                 \ cx has the len
+                JCXZ DONE.              \ if len=0 exit
+                DI       POP.                 \ di has address
+                DX   ES  MOV.              \ save ES: in DX register
+                DS      PUSH.                \ get the data segment DS:
+                ES       POP.                 \ & put in into ES:
+                BX   CX  MOV.
+                REPNZ: SCASB.           \ let 'er Rip!
+                ES   DX  MOV.              \ restore ES segment
+                JNZ      NIX.
+                CX       INC.
+                DI       DEC.
+@@ NIX.         DI PUSH.
+@@ DONE.        BX CX MOV.
+                next.
+END-CODE
+
+EXIT
+
+\ THESE VERSION NEED FIXING
+
+CODE SCANW  ( adr len n -- index )  \ scan array for 'n'
+                AX BX MOV.
+                CX POP.
+                DI POP.
+                DX ES MOV.
+                ds push.
+                ES POP.                 \ put new SEG in ES
+                BX CX MOV.
+                REPNZ: SCASW.           \ let 'er Rip!
+                JZ SKIP2
+                BX CX MOV.
+@@ SKIP2        BX CX SUB.
+                ES DX MOV.
+                next.
+END-CODE
+
+
+\ 'long' versions that take a far segment parameter
+CODE SCANWL  ( seg adr len n -- index )  \ scan array for 'n'
+                AX BX MOV.
+                CX POP.
+                DI POP.
+                DX ES MOV.
+                ES POP.                 \ put new SEG in ES
+                BX CX MOV.
+                REPNZ: SCASW.           \ let 'er Rip!
+                JZ SKIP2
+                BX CX MOV.
+@@ SKIP2        BX CX SUB.
+                ES DX MOV.
+                next.
+END-CODE
+
+
+CODE SCANL  ( seg adr len c -- index )  \ scan array for 'c'
+                AX BX MOV.
+                CX POP.
+                DI POP.
+                DX ES MOV.
+                ES POP.                 \ put new SEG in ES
+                BX CX MOV.
+                REPNZ: SCASB.           \ let 'er Rip!
+                JZ SKIP
+                BX CX MOV.
+@@ SKIP         BX CX SUB.
+                ES DX MOV.
+                next.
+END-CODE
+
+

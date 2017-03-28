@@ -1,0 +1,81 @@
+\ INDEX , An old friend is back for files. I'm happy.     08OCT92 FOX
+
+
+FIND TOP$       0= ?(  )
+FIND DIR@       0= ?( FLOAD DOSEXT )
+FIND .DIR/W     0= ?( FLOAD DIRECTRY.FOX )
+
+DECIMAL
+50 VAR L/PAGE           \ lines  per page= 66
+
+HEX
+VARIABLE #LINE
+VARIABLE #PAGE
+VARIABLE PRINTING
+
+: PRINT  1 PRINTING !   ['] PEMIT IS EMIT ;
+
+: CR'S       0 DO  CR #LINE 1+!  LOOP ;
+: FORM-FEED  0C EMIT  #PAGE 1+!   #LINE 0!  ;
+: .TODAY   DATE@  DATE->$ $. ;
+: .NOW     TIME@  TIME->$ $. ;
+
+FIND .THEDIR 0=
+?( : .THEDIR   DRIVE@ 64 + EMIT ." :\"  DRIVE@ DIR@ 25 RIGHT$ $. ; )
+
+: ASCII?  ( $ -- ? )
+        -1 SWAP
+        COUNT
+        OVER + SWAP
+        DO  I C@ BL < IF DROP 0 LEAVE  THEN LOOP ;
+
+
+: .PAGE#   #PAGE @ IF ." page:" #PAGE @ 3 .R THEN ;
+
+: .HEADER
+        CR
+       ." Index of directory:"  .THEDIR TAB .TODAY SPACE .NOW
+        CR CR   3 #LINE +! ;
+
+: .FOOTER  CR  CR
+           L/PAGE #LINE @ -  CR'S
+           0F CTAB ." Brian Fox Index Utility for HS/FORTH V5.0"
+           CR 40 CTAB .PAGE#
+           FORM-FEED ;
+
+: ?FORMFEED  #LINE @  L/PAGE > IF .FOOTER .HEADER  THEN ;
+
+20 $VARIABLE NDXFILE$
+64 $VARIABLE NDXDIR$
+
+: ?STOP-INDEX ( ? -- )
+    IF PRINTING 0!
+        CRT -1 ABORT" Index halted"
+    THEN ;
+
+DECIMAL
+: .INDEX
+        PRINTING @ IF  CRT THEN ." Sorting..."
+        PRINTING @ IF PRINT THEN
+        CLOSE-INPUT
+        32 SWAP READ-DIR
+        #LINE 0!  1 #PAGE !
+        .HEADER
+        #FILES @  1
+        DO
+            I NTH$L DROP NDXFILE$ $@L
+            NDXFILE$ OPEN-INPUT
+            NDXFILE$ $.  15 CTAB <FILE FR 63 GW
+            DUP ASCII? NOT
+            IF   DROP ." Un-printable"
+            ELSE  $.
+            THEN CR   #LINE 1+!
+            CLOSE-INPUT
+            ?FORMFEED
+            ?TERMINAL ?STOP-INDEX
+        LOOP
+        PRINTING 0! ;
+
+DECIMAL
+: INDEX    BL WORD  ?*.*  .INDEX  .FOOTER ;
+

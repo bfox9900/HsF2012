@@ -1,0 +1,368 @@
+\ MTASK Multitasker Copyright 1987 Harvard Softworks, All rights reserved.
+
+\ *****  EXPERIMENTS ARE IN THIS VERSION *****
+
+\ Finally made this work with HSF2000,  June 14, 2015  LOL!
+\ Added tons of comments
+\ in the process found an un-needed instruction in <yield>. cool!
+
+\ had to remember the difference between tick ' in HsForth and ' in ANS Forth
+\ to make the assembler code work. Also found Jim had duplicated KKEY? in this
+\ file probably for an older version, but it is in the kernel of my version.
+\ double checked the code and it's identical
+
+\ June 17 2015:  Added PAUSE as a higher level task switch.
+\                PAUSE reads the priotity user-variable of each task and
+\                performs a low overhead loop of yield
+
+\ June 21, 2015  this version removes USER1-S user area created by Jim Kaliahn
+\                seems to work fine without that extra memory taken up.
+
+\ July 29 2015   Changed comments to use the name PID (process ID) instead of "TASK"
+
+\ Aug 31 2015    added local store to save space. now 810 bytes added to Lists segment
+
+HEX
+[undefined] !CSP   [if]  : !CSP     SP@ CSP ! ;      [then]
+[undefined] YIELD  [if]  CODE YIELD  next. END-CODE  [then]
+
+
+variable multi-tasking                                     \ global flag indicates status ON/OFF
+variable #tasks                                            \ counts the number of running tasks
+
+20 VALUE -FKEY?
+
+
+\ CREATE USER1-S                                            \ Create the new USER area   WHY DO WE NEED THIS?
+\                 STACKS DUP@ , ++@ , ++@ , ++@ , ++@       \ fix P# on reloads   (Jim, WTF does this mean? P# means paragraph# I think)
+
+
+\ create new user variables
+                 0       USER-VAR TASK-LINK                \ create the link to other tasks
+                 USER-BASE     TO TASK-LINK                \ init the link to HsForth default TASK
+
+                 true    USER-VAR TASK-FLAG                \ create TASK-FLAG. This flag sets the task Awake or asleep
+                 up @    USER-VAR TASK-STACK               \ create TASK-STACK and set the stack seg for this new user AREA
+                 0       USER-VAR TASK-BUFS                \ TASK-BUFS is an offset for PAD and other memory areas so each task uses a different address
+                 \  new B Fox user-vars
+                 0       USER-VAR TASK-STAT                \ container for status value. (BUSY or RUNNING)
+                 0       USER-VAR TASK-MAIL                \ This user-var receives messages from other tasks.
+                 0       USER-VAR SENDERPID                \ PID of the mail sender. 0 = nothing waiting
+                 0       USER-VAR TASK-ID                  \ This is used for reporting error messages. Needs to go in an list with USER block addresses
+                 3       USER-VAR PRIORITY                 \ used to control resourses.  1 = highest priority, descending to 65535 OR 0 being lowest.
+                 0       USER-VAR TIMEOUT                  \ keep track of how long something has been attempted
+                 0       USER-VAR PORT#                    \ used for I/O port base address
+\                0       USER-VECTOR XY                    \ routine to control cursor if you use different terminals on the machine
+
+: MAKE-USER      ( -- <name>)
+                 CREATE
+                         UP @ HERE                         \ -- old-user-block  here
+                         OVER 2I@ 4+ DUP ALLOT             \ allocate space for this new user-block
+                         CMOVE                             \ copy the the data to the new user block
+                         #tasks 1+!
+                 ;' DOVAR                                  \ run time: act as a variable and return your address
+
+\ TASK Switcher  ...................
+CODE <YIELD> ( -- )                                        \ Cooperative task switcher is vectored to YIELD
+        BX                        PUSH.                    \ save the Forth TOS register
+        BX     UP +[]             MOV.                     \ move user pointer into BX. We will access the USER variables as [uservar+BX]
+        AX  ' TASK-BUFS >BODY @  +[BX] MOV.                \ get the task-bufs address into AX
+        ENDL +[] AX               SUB.                     \ adjust the end of Lists memory pointer for this task
+
+                                                           \ this loop is the actual task switcher, looking for the next Awake task
+@@ L1.  BX  ' TASK-LINK >body @ +[BX] MOV.                 \ read the task-LINK field of the next TASK into BX
+        ' TASK-FLAG >body @ +[BX] TRUE IW TEST.            \ if task-flag of this new task is true then the task is AWAKE
+        JZ L1.                                             \ if false jump back to L1, and try the next task
+
+        AX  ' TASK-BUFS >body @ +[BX] MOV.                 \ we found an awake task... move the task-buf offset into AX
+        ENDL +[]  AX            ADD.                       \ PAD for task = ENDL+AX
+
+\ change USER                                              \ BX contains the address of the current task user-area
+        UP +[]    BX            MOV.                       \ store BX ( the new task's user-area) in UP variable  (switch to new user area)
+        BX  ' TASK-STACK >body @ +[BX] MOV.                \ move the current TASK-STACK variable to BX
+
+\ change Stack segment...
+        SI                      PUSH.                      \ save HSF's critical registers on this stack
+        BP                      PUSH.
+        ES                      PUSH.
+        SS: 0000 +[]   SP       MOV.                       \ store the stack pointer for current task in it's own Stack segment
+
+\ this is a big overhead to maintian variables in the Forth space
+        DI         STACKS   iw  MOV.                       \ get the STACKS data structure address into DI
+        AX DS                   MOV.                       \ move data seg to AX
+        ES AX                   MOV.                       \ mov AX to ES.   ie now ES=DS
+        DX [BX]                 MOV.
+        SI  BX                  XCHG.                      \ ds:si is the source [ task-block] ,  es:di [ STACKS data structure] is the destination
+                                MOVSW.                     \ Next 4 instructions update the 4 words in the STACKS data structure
+                                MOVSW.
+                                MOVSW.
+                                MOVSW.
+        SI BX                   MOV.
+        ES DX                   MOV.
+        ES: AX    0000 +[]      MOV.                       \ get the stack pointer stored at address 0000 into AX
+                                CLI.                       \ disable interrupts
+        SS DX                   MOV.                       \ change the Stack Segment
+        SP AX                   XCHG.                      \ return the task's stack point to where it was last time.
+                                STI.                       \ safe to enable interrupts again
+
+\ restore Forth and get out...
+        ES                      POP.                       \ get this new task's ES, BP, SI and TOS registers restored
+        BP                      POP.
+        SI                      POP.
+        BX                      POP.
+        NEXT.
+END-CODE
+
+: MAKE-STACK     ( size MAKE-STACK name )
+                 -2 AND 1+  SEGMENT
+                 HERE 2- 4- DUP 4- 2@ 4- tuck 4-  2-   ( adr.end  size-4  p#  size-A )
+                 2dup 4+                  0         -ROT !L
+                 2dup CELL+ [ PFA-OF QUIT ] LITERAL -ROT !L   \ default action?
+                 2dup                     2         -ROT !L    ( BP )
+                 2- 2dup                  ES@       -ROT !L
+                 SWAP 0 !L
+                 DUP ROT 2! ;
+
+: MYSELF         ( -- PID )    UP @   ;
+
+[undefined] inline[ [if]
+
+  : LOCAL          ( PID addr -- addr')  myself  -  + ;
+
+[else]
+
+   code @-+   inline[ @ - + ] next. end-code               \ faster version of local using inlining
+
+  : LOCAL ( PID addr -- addr') UP @-+ ;
+
+[THEN]
+
+
+: LOCAL!         ( n PID addr -- )     local ! ;           \ this is used many times so this saves space
+: @LINK          ( -- adr )            TASK-LINK  @ ;
+: !LINK          ( adr -- )            TASK-LINK  ! ;
+
+: TASK:          ( stack-size -- )                        \ ie, 400 TASK: DO-SOMETHING
+                 align
+                 HERE CELL+  >IN @  ROT  MAKE-STACK  >IN !
+                 HERE CELL+              MAKE-USER         \  user-2(stack)  user-2(uvar)
+                 TUCK TASK-STACK local!                    \  user-2(uvar)
+                 @link  OVER  !link                        \  user-2(uvar)  task-link
+                 OVER  TASK-LINK  local!
+                 TASK-FLAG LOCAL OFF ;
+
+: SET-TASK       ( ip PID -- )
+                 TASK-STACK LOCAL @ 2@ SWAP ES! 4-         \ Top of Stack  ( ip stackpos )
+                 4-    TUCK  !E                            \ Initial IP    (    stackpos )
+                 2- 2   OVER !E
+                 2- 0000 !E ;                              \ Initial RP    (    stackpos )
+
+
+\
+\ ALL tasks exist as a circular linked list. The USER area address we will call the Process ID (PID)
+\ FIND-PID walks through the list
+\
+: find-pid ( PID -- flag )                                 \ find process ID (PID) return true/false flag
+       DUP MYSELF = IF DROP TRUE EXIT THEN                 \ Test my own PID
+       0 >R                                                \ create a local variable on Rstack
+       myself
+       begin
+          task-link local @                                \ get the link to the next job
+          dup myself <> R@ OR                              \ am I back to myself OR did we find a PID?
+       while
+          2dup =
+          if R> 1- >R                                      \ decrement our local var to make it -1 (true)
+          then
+       repeat
+       2DROP
+       R>  ;                                               \ return the local variable for our flag
+
+
+: ?pid           ( PID -- PID | abort)                     \ error test for TASK commands.
+                 dup find-PID 0= abort" Invalid PID" ;     \ using a bad PID will crash the system so this ABORTS in a controlled way :-)
+
+: INIT-MULTI     ( -- )       STACKS @ USER-BASE ! ;
+: SINGLE         ( -- )       CA' NEXT     DEFINES YIELD    multi-tasking off  timercal ; \ Limit to main task.
+: MULTI          (  -- )      CA' <YIELD>  DEFINES YIELD    multi-tasking on   timercal ; \ Activate multitask.
+
+: Pulse          ( -- uS)     tick  yield tock  ;                    \ measure the load on the system
+
+
+false [IF]     \ MULTI-TASKER programmer commands  **FASTER UN-PROTECTED VERSIONS**
+: RESET-TASK     ( PID -- ) DUP 2I@ 4+ BOUNDS SET-TASK ;
+: WAKE           ( PID -- ) TASK-FLAG LOCAL ON     ;                 \ activate the task
+: SLEEP          ( PID -- ) TASK-FLAG LOCAL OFF    ;                 \ Suspend task.
+: RESTART        ( PID -- ) DUP RESET-TASK  WAKE   ;                 \ new command added by BF. Safer than RESET-TASK
+: <JOB>>         ( PID -- ) R> OVER SET-TASK WAKE  ;
+
+[ELSE]         \                                  **SLOWER BUT PROTECTED VERSIONS***
+: RESET-TASK     ( PID -- )  ?pid DUP 2I@ 4+ BOUNDS SET-TASK ;
+: WAKE           ( PID -- )  ?pid TASK-FLAG LOCAL ON ;               \ activate the task
+: SLEEP          ( PID -- )  ?pid TASK-FLAG LOCAL OFF ;              \ Suspend task.
+: RESTART        ( PID -- )  ?pid DUP RESET-TASK  WAKE ;             \ new command added by BF. Safer than WAKE
+: <THREAD>>      ( PID -- )  ?pid R> OVER SET-TASK WAKE  ;
+
+[THEN]
+
+: <;THREAD>      ( -- )      myself SLEEP  YIELD ;
+: THREAD>        ( -- )      ?COMP COMPILE <JOB>>               ; IMMEDIATE
+: ;THEAD         ( -- )      ?COMP COMPILE <;JOB> [COMPILE] ;   ; IMMEDIATE
+
+\ NICE is used in UNIX to adjust priority so I stole it
+: NICE          ( value PID -- ) ?PID 1 MAX PRIORITY local! ;    \ set the priority of the given task. can't be <1
+: NICE?         ( PID -- n )     ?PID priority local @ ;         \ get the priority of a TASK
+
+\ resource allocation
+: DREAMS        ( n --)                                          \ ALWAYS does at least 1 YIELD
+                1 MAX                                            \ if n= zero it does 65536 yields so we prevent that
+                begin  YIELD  1- DUP 0=   UNTIL
+                DROP ;
+
+\ Addition:   Pause is more sophisticated than yield in that it uses the PRIORITY user-var
+\             AND... it records the fact that it is waiting.
+\             The status is recorded in the user variable  TASK-STAT
+
+: BUSY           task-stat off ;                           \ false means I'm busy
+: RUNNING        task-stat on ;
+
+: PAUSE          ( -- )
+                 BUSY
+                 PRIORITY @ DREAMS                         \ each task will PAUSE based on it's priority level. bigger priority = more YIELDS
+                 RUNNING ;                                 \ true means it's running
+
+100 Value STACK-SIZE                                       \ 256 bytes/63 cells each, for P-stack and R-stack should be enough for Forth
+
+: THREAD:    ( -- <NAME> )
+                 STACK-SIZE  TASK: HERE @LINK              \ get addresses: def-list , new task
+                 SET-TASK  !CSP  ]  ;
+
+
+\ Simple mailbox implementation for Fox Multi-tasker. (MaxForth) 04JAN94)
+\ base on article in Forth Dimensions Vol 7 #4 by R. W. Dobbins. Columbia ML.
+\ It allows a transputer like com link between FORTH tasks
+\ Concept: "SENDer" waits until the mailbox is cleared by "RECIEVER" before sending the next message
+\ Message is 1 CELL.  But complex sender/receiver pairs can be created with this simple pipe.
+\ example: create mail-emit, mail-type, mail-key and run the task by sending Forth words to a task! Wow.
+
+\ IMPROVEMENT:
+\ now supports for SENDERPID variable as a MAIL READY flag and using the sender's PID.
+\ RCVR task can send a message back if needed by using the sender's PID
+
+\ ** HANDSHAKE PROTOCOL **
+\ SENDER task blocks on RCVR TASKS SENDERPID variable until it equals 0 (means ready to accept)
+\ SENDER task puts the message in the RCVR TASK-MAIL variable.
+\ SENDER puts their own PID into the RCVR tasks SENDERPID variable to indicate their is mail waiting
+\ RCVR reads the TASK-MAIL variable for the message
+\ RCVR clears it's own SENDERPID variable indicating it is ready to get another message
+
+\ see demo\taskmail.hsf
+
+\ commands that tasks can do to their own mailbox
+: SENDER@        ( -- PID)   SENDERPID @ ;                        \ get my senders PID
+: mail?          ( -- ? )    SENDER@ 0 <> ;                       \ check my own mailbox FLAG
+: mail@          ( -- n|?)   TASK-MAIL @  SENDERPID OFF ;         \ fetch the mail and reset the handshake
+: junkmail       ( -- )      task-mail OFF  ;                     \ clear my mailbox, don't ask permission
+
+: WAITING        ( adr --)
+                 BUSY
+                 ( TIMEOUT OFF )
+                 BEGIN   PAUSE ( TIMEOUT 1+! )DUP@   UNTIL        \ Block for address contents to be non-zero
+                 RUNNING ;
+
+: SEND-MAIL      ( msg pid --)
+                 SENDERPID DUP>R LOCAL WAITING                    \ save copy of PID, get RCVR's handshake local addr, Wait until its ready
+                 R@ TASK-MAIL LOCAL !                             \ store the msg in RVCR's mailbox
+                 R> LOCAL OFF ;                                   \ reset the handshake
+
+: READ-MAIL     ( pid -- msg ) SENDERPID WAITING  MAIL@ ;         \ ASSUMES you only want to read your own mail
+
+
+\ mult-tasker STATUS variable could be used to convey more meanings with these values
+
+1 CONSTANT wait-to-send
+2 CONSTANT wait-for-mail
+
+\ Console I/O made multi-tasking friendly
+
+: MWEMIT         ( char -- )
+                pause ROW,COL CURSOR! WEMIT ;
+
+: MKKEY          ( -- char )
+                 -FKEY?
+                 IF
+                   BEGIN
+                     ROW,COL CURSOR!
+                     pause
+                     KKEY?
+                   UNTIL
+                 THEN
+                 KKEY DUP TO -FKEY? ;
+
+
+\ patch the KBRD and CRT commands to use the multi-tasking versions of key and emit  (messy but that's what Jim did)
+                 ' MKKEY  ' KBRD 4 I!
+                 ' MWEMIT ' CRT 1E I!
+
+\ execute them now
+                 KBRD CRT
+
+decimal
+\ ===================================================================
+
+0 [if]
+
+\ *** Multi-user support *** from Intelect project 1994
+
+\ make a 1K segment for the TIB's
+HEX
+400 SEGMENT TIBS
+
+TIBS 2I@ 2- TIBS 4I!    TIBS @ 0 TIBS 4I@ 0 FILLL                                         \ clear the TIB segment
+
+
+55 value TIBSIZE
+
+\ array of "TIBs"
+: ]TIB  ( task# -- adr ) TIBSIZE 8+ * 4+ ;
+
+\ get at another tasks pad for data transfer, message passing etc
+: ]PAD  ( task# -- adr ) PADSPLIT * PAD + ;
+
+\ new definition for QUIT
+AT: MQUIT  ( -- )                       \ main routine of a TERMINAL task
+        BLK off
+        4 SOURCE? !
+        [COMPILE] [
+        TIBS @  TIBSEG !                \ terminal input buffers moved to a segment
+        TASK# @ ]TIB  TIB  !            \ each task has it's own TIB in the segment
+        SSP 0!                          \ clear B. Fox string stack pointer
+        BEGIN
+             CR  RP!
+             QUERY  INTERPRET  PROMPT
+             YIELD
+        AGAIN ;
+
+\ Now re-define the old version of QUIT with MQUIT
+     CA' MQUIT DEFINES QUIT
+
+[then]
+
+
+
+\ Test code .........................................................
+0 [IF]
+
+init-multi
+single
+
+variable x
+
+BACKGROUND: task1                                                    \ increment X continuosly
+      begin
+           x 1+!
+           yield
+      again
+;JOB
+
+[THEN]
+

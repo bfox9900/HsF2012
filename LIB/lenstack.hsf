@@ -1,0 +1,18 @@
+\ Software stacks (see text for documentation)
+\ from Len Morgenstern's page circa 1996
+
+THIS DOES NOT WORK! :-) THAT'S WHAT YOU GET WHEN YOU COPY FROM THE INTERNET
+
+: lifo ( n -- ) ( -- adr)
+     create here cell+ , cells allot does> ;
+
+: push ( n lifo -- )
+     swap over @ ! cell swap +! ;
+
+: pop ( lifo -- x )
+     cell negate over +! dup @ swap over >=
+     abort" [pseudostack underflow] " @ ;
+
+: pclear ( lifo -- ) dup cell+ swap ! ;
+
+: pbounds ( lifo -- addr1 addr2 )   dup @ swap cell+ ;

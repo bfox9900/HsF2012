@@ -1,0 +1,194 @@
+\ MTASK Multitasker Copyright 1987 Harvard Softworks, All rights reserved.
+\ Mods to allow multi-users by B. FOX 01Feb90
+\ **************************************************************************
+\ Changes made by B. Fox      01feb90...
+\ These changes are an attempt to make a multiuser user environment
+\ out of HS/FORTH. Basic problems are:
+\       1. QUIT resets the TIBSEG and TIB to a fixed location every time
+\       2. No ID available for individual tasks.
+\       3. No way to know which I/O port is to be used with a task.
+\       4. No way to control a tasks access to critical resources.
+\       5. No simple way to know if multi-tasking is active
+\       6. No simple way to set local user-vectors.
+\ Solutions:
+\       1. Make a separate segment for all TIB's called TIBS
+\          & make location of TIB a function of new USER-VAR TASK#.
+\          Redefine QUIT to use MQUIT that sets TIB in TIBS segment
+\       2. Make all tasks record their task# at creation in USER-VAR TASK#
+\       3. Add a user-var caller PORT# which hold the the RS232 port for
+\          that user TASK#.
+\       4. Add a USER-VAR called PRIORITY to set a priority level.
+\       5. Add variable MULTI-MODE to be set reset by <SINGLE> & <MULTI>
+\       6. Add the word RE-DEFINES to allow changes to LOCAL USER-VECTORs
+\ ***************************************************************************
+\ conditional create these constants to allow compiling outside Intelect
+[undefined] RESET   [if] 0 CONSTANT RESET [then]
+[undefined] SET     [if] -1 CONSTANT SET [then]
+
+HEX
+CODE KKEY? ( - 0|-1 ) <% 53 B401 5655CD165D5E BB0000 7401 4B %> END-CODE
+
+: !CSP     SP@ CSP ! ;
+
+CODE YIELD END-CODE
+
+20 VALUE -FKEY?
+
+: YIELDS  ( n --) 0 DO YIELD LOOP ;      \ for resource allocation
+
+: MWEMIT   ROW,COL  CURSOR!  WEMIT YIELD ;
+
+: MKKEY -FKEY?
+        IF
+            BEGIN
+                YIELD ROW,COL CURSOR!
+                KKEY?
+            UNTIL
+        THEN
+        KKEY DUP IS -FKEY? ;
+
+\ patch multi-tasking KEY and EMIT into main TASK
+' MKKEY   ' KBRD 4 I!
+' MWEMIT  ' CRT   1E I!     KBRD CRT
+
+CREATE USER0-S   STACKS DUP@ , STEP , STEP , STEP , DROP  \ fix P# on reloads
+
+\ Create the user-vars
+ 0      USER-VAR TASK-LINK     USER-BASE IS TASK-LINK
+-1      USER-VAR TASK-FLAG
+USER0-S USER-VAR TASK-STACK
+ 0      USER-VAR TASK-BUFS
+
+\  new user-vars
+ 0  USER-VAR TASK#
+ 0  USER-VAR PRIORITY
+ 0  USER-VAR PORT#
+
+\ B. Fox mods for simpler multiple terminal use
+VARIABLE #TASKS     #TASKS 0!     \ keep track of how many task are created
+VARIABLE MULTI-MODE                \ FLAG  to  indicate MULTI/SINGLE mode
+
+   200 VAR PADSPLIT               \ split between PADs of different tasks
+
+: MAKE-USER    CREATE  UP @ HERE OVER 2I@ 4+ DUP ALLOT CMOVE
+                       #TASKS 1+!  ( Fox modification )
+                       ;' DOVAR
+
+CODE <YIELD>   <% 53 8B1E %> UP W%
+               <% 8B87 %> ' TASK-BUFS >BODY @ W%   <% 2906 %> ENDL W%
+   ( +TASK. )  <% 8B9F %> ' TASK-LINK >BODY @ W%   <% F787 %> ' TASK-FLAG >BODY @ W% -1 W%
+          <% 74F4 8B87 %> ' TASK-BUFS >BODY @ W%   <% 0106 %> ENDL W%
++CODE SET-USER  <% 891E %> UP W% <% 8B9F %> ' TASK-STACK >BODY @ W%
++CODE USE-STACK <% 56 55 06  36 89260000  BF %> STACKS W%
+                <% 8CD8 8EC0 8B17 87DE A5 A5 A5 A5 89DE 8EC2 26 8B060000 %>
+                <% FA 8ED2 94 FB 8EC1 07 5D 5E 5B %> END-CODE
+
+: MAKE-STACK  ( size MAKE-STACK name )   -2 AND 1+  SEGMENT
+        HERE 2- 4- DUP 4- D@ 4- UNDER 4-  2-   ( adr.end  size-4  p#  size-A )
+        DDUP 4+                  0         -ROT !L
+        DDUP 2+  [ PFA-OF QUIT ] LITERAL   -ROT !L
+        DDUP                     2         -ROT !L    ( BP )
+     2- DDUP                     ES@       -ROT !L  SWAP 0 !L   DUP ROT D! ;
+
+: LOCAL   (  base adr -- adr' )  UP @ -   +    ;
+
+\ changes runtime action of local user-vector
+: RE-DEFINES ( CFA, task-name -- <user-vector>
+           USER-BASE  [']  >BODY @ +   LOCAL ! ;
+
+: @LINK   (  -- adr )            THE TASK-LINK  ;
+: !LINK   (  adr -- )            IS  TASK-LINK  ;
+
+: TASK:   (  stack-size -- )                   \ ie, 400 TASK: DO-SOMETHING
+   ALIGNW  HERE 2+  THE >IN  ROT  MAKE-STACK
+           IS >IN   HERE 2+       MAKE-USER    \ user-2(stack)  user-2(uvar)
+           UNDER TASK-STACK LOCAL !            \ user-2(uvar)
+           >R                                  \ we're gonna need this number
+           @LINK  R@ !LINK                     \ task-link
+           R@  TASK-LINK LOCAL !
+           R@  TASK-FLAG LOCAL 0!
+         \ ** additions by B. Fox for multi-user terminals
+           #TASKS @   R@ TASK# LOCAL !      \ record the task# in USER-VARS
+           R@ TASK# LOCAL @ PADSPLIT *      \ calc. pad OFFSET
+           R> TASK-BUFS LOCAL ! ;           \  set the PAD offset
+
+: SET-TASK   (  ip task -- )
+           TASK-STACK LOCAL @ D@ SWAP ES! 4-   \ Top of Stack  ( ip stackpos )
+           4-    UNDER !E                      \ Initial IP    (    stackpos )
+           2- 2   OVER !E 2- 0 !E ;            \ Initial RP    (    stackpos )
+
+: RESET-TASK ( task -- )  DUP 2I@ 4+ OVER + SWAP SET-TASK ;
+
+\
+: INIT-MULTI            STACKS @ USER0-S ! ;
+
+\ These definitions for single & multi are to primitive for an INTELECT
+\ user to have access to. Redefined in election.int
+: <SINGLE>   (  -- )
+        RESET MULTI-MODE !
+        CA' NEXT     DEFINES YIELD ;  \ Limit to main task.
+
+: <MULTI>    (  -- )
+        SET MULTI-MODE !
+        CA' <YIELD>  DEFINES YIELD ;  \ Activate multitask.
+
+
+: ?MULTI-TASKING MULTI-MODE @ ABORT" Not allowed in MULTI mode. Set to SINGLE." ;
+
+: WAKE     ( Tadr -- ) -1 SWAP  TASK-FLAG LOCAL  ! ;  \ Execute task.
+: SLEEP    ( Tadr -- )          TASK-FLAG LOCAL 0! ;  \ Suspend task.
+
+: <JOB>>   (  task -- )  R> OVER SET-TASK WAKE  ;
+: <;JOB>   (       -- )  UP @ SLEEP       YIELD ;
+: JOB>                   ?COMP COMPILE <JOB>>               ; IMMEDIATE
+: ;JOB                   ?COMP COMPILE <;JOB> [COMPILE] ;   ; IMMEDIATE
+
+400 VALUE STACK-SIZE
+
+: BACKGROUND:   (  -- )
+          STACK-SIZE  TASK: HERE @LINK  ( get addresses: def-list , new task )
+          SET-TASK  !CSP  ]  ;
+
+\ make a 1K segment for the TIB's
+HEX
+400 SEGMENT TIBS      TIBS 2I@ 2- TIBS 4I!    TIBS @ 0 TIBS 4I@ 0 FILLL
+55  VALUE TIBSIZE
+
+\ get at other tasks local memory spaces
+: ]TIB  ( task# -- adr ) TIBSIZE 8+ * 4+ ;
+: ]PAD  ( task# -- adr ) PADSPLIT * PAD + ;
+
+\ new definition for QUIT
+AT: MQUIT  ( -- )                       \ main routine of a TERMINAL task
+        0 IS BLK
+        4 IS SOURCE?
+        [COMPILE] [  
+        TIBS @ IS TIBSEG
+        THE TASK# ]TIB  IS TIB
+        SSP 0!                          \ clear B. Fox string stack pointer
+        BEGIN
+             CR  RP!
+             QUERY  INTERPRET  PROMPT
+        AGAIN ;
+
+
+\ Now re-define the old version of QUIT with MQUIT
+     CA' MQUIT DEFINES QUIT
+
+-1 [IF]
+
+\ Test code
+
+init-multi
+
+single
+
+variable x
+
+task: task1
+      begin
+           x 1+!
+           1000 ms
+      again
+;task
+

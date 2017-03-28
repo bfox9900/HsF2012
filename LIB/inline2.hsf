@@ -1,0 +1,155 @@
+\ inline.hsf  a simple speedup for primitives    April 20 2008  Brian Fox
+
+\ This simple code provides a way to speed up primitives that use code words.
+\ By removing the NEXT. operation that ends every Forth word it allows
+\ us to string primitives together.  The effect of this is to reduce the total
+\ execution time of the equivalent Forth word by almost half.  That is correct!
+\ Conventional Forth primtives spend 1/2 of it's time running the word NEXT.
+\
+\ How it works:
+\ The following code creates the words inline:, lit: and :parm which are used to
+\ to create CODE words that run faster than the equivalent hi-level Forth.
+\ INLINE: works by reading the code in the codes segment and scanning for the
+\ Forth NEXT routine.  When this is found, we know the continuous memory area
+\ that contains the machine code of the CODE word we are trying to inline.
+\ By simply transferring that code into the next available free memory in the
+\ code segment without copying the NEXT routine we have the beginning of a new
+\ machine code routine.
+
+\ The word lit: is used to embed a literal number into the code defintion. It is
+\ really an Assembler macro that compiles a push intruction to save the BX register.
+\ (Top of stack for HSF2000). Then it compiles a "MOV IMM. Word BX" intruction into memory
+\ and finally it compiles the literal number into memory.  When this code runs
+\ it pushes BX and then moves the literal into BX where it is then available on
+\ the top of stack for Hs/Forth to use.
+
+\ The word parm: works the same as lit: but it takes it's parameter from the
+\ Forth stack at compile time.  This allows the use of Forth variables and
+\ constants within inline: code words.
+
+\ Side-effect!  Because of the segment architecture of HSF2000, you can save
+\ space in the LISTS segment because "inline:" words are CODE words and so compile in the CODES Segment.
+\ Save space and go faster... not a bad deal!
+
+\ Dec 2, 2014
+\ added inline[ ] which can take a line of words and inline them.
+\ wanted that back in 2008 but couldn't figure out how to find a string. duh!
+
+
+\  Examples -------------------------------------------------------------
+
+\ code 8+ ( n -- n+8)             \ add 8 to the # on top of stack
+\        lit: 8                   \ compile the literal #8 into the code
+\        inline: +
+\        next.
+\ end-code
+
+
+\ sum 4 numbers faster (ie: un-roll a short loop)
+\   code  +++   ( n n n n -- sum )
+\        inline: +
+\        inline: +
+\        inline: +
+\        next.
+\   end-code
+
+
+\ : TOP$  SSP @ PAD + ;        \ original Forth code to calculate
+                               \ addr. of top of string stack; pad + String stack pointer (SSP)
+
+
+\ code top$ ( -- addr )         \ Same as above but 2X faster!
+\       ssp :parm               \ push the SSP variable into the stack as a parameter
+\       inline[ @ pad + ]
+\       next.
+\ end-code
+
+
+
+ ONLY ASSEMBLER ALSO FORTH DEFINITIONS ALSO
+
+HEX 097AD constant 'next       \ machine code for HSF next : lodsw. ax dx xchng.
+
+ca' create constant ACOLON     \ ACOLON is the run-time routine for 'docol'.  It allows us to indentify a colon definition
+
+
+: ?code ( adr -- )
+        dup ACOLON - not abort" Inline says: Not a code word" ;
+
+
+\ scan code segment looking for the NEXT. routine.
+\ abort if NEXT is not found after 256 bytes. This is an arbitrary size
+\ but most Forth code words are much smaller than 256 bytes.
+
+: find-next ( adr --  adr2 )
+        0               \ this is a flag that falls thru if we don't succeed
+        swap
+        codes @ es!
+        ( adr) 100     \ max length of the allowed code word is $100 (256) bytes
+        bounds
+        do
+           I @E 'next =
+           if
+              drop
+              I
+              leave
+           then
+        loop
+        dup 0= abort" Inline says: Cannot find NEXT" ;
+
+\
+\ find an upper case string ($) in the current vocabulary and return it's "CODE ADDRESS". The address in the CODES segment that runs.
+\
+: $find ( $ -- code-address )
+        CURRENT @ <find> 0= ABORT" Inline says: Not in CURRENT vocabulary"
+        DROP
+        nfa pfa cfa @ ;
+
+
+
+: cmoveES:CS ( end-code-adr code-adr -- )
+        swap   \ now we can loop through the code space
+        do
+           i c@E  c%    \ fetch each byte of code and compile at the new address
+        loop ;
+
+HEX
+\
+\ these words do the magic
+\
+: code-copy ( code-adr -- )
+        ?code                   \ is it really a "CODE" word
+        dup  find-next
+        ( code-adr end-code-adr ) cmoveES:CS ;
+
+
+: inline:  ( -- <TEXT> )        \ inline a single code primitive
+        codes @ ES!             \ set ES register to the codes segment
+        [COMPILE] CA'           \ get the code address of the <TEXT>
+        code-copy ;
+
+
+\ inline a string of code words all at once
+: inline[                        \ usage: inline[ over + swap dup = OR ]
+          codes @ ES!            \ set ES register to the codes segment temporarily
+          begin
+              BL WORD PAD $!
+              PAD UPPER
+              PAD 1+ C@ [CHAR] ] = NOT
+          while
+              PAD $find ( code-address) code-copy
+          repeat  ;
+
+
+: :parm  ( n -- )       \ MACRO to push n into the code as item on the stack
+        bx push.        \
+        0BB c%          \ CARNEL knowledge!  compile  Intel intructions into the CODES segment
+                        \ $0BB = (MOV IMM. WORD  instruction)
+        ( n) w%  ;      \ compile the 16bit word, 'n' into the next CODE segment address;
+
+
+: lit:                                \ same as :PARM but parses the input stream
+        bl word >number d>s :parm  ;  \ parse text, convert to # and compile it
+
+EXIT
+

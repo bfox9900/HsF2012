@@ -1,0 +1,83 @@
+\ printer.hsf a file to handle printer control for hsf2000
+DECIMAL
+
+only FORTH DEFINITIONS
+
+FALSE value PRINTING
+
+VARIABLE #LINE
+VARIABLE #PAGE
+
+12 constant 'form-feed'
+
+75 value FORM-WIDTH
+66 value FORM-LENGTH
+55 value LINES/PAGE
+
+ 0 USER LPT#
+
+HEX
+: ?PRINTER  ( -- ? ) 0200 00 00  LPT# @ 17 INTCALL  ( 0B B@ NOT ) ;
+
+DECIMAL
+: PRINTOFF  FALSE IS PRINTING ;
+: PRINTON   TRUE  IS PRINTING ;
+
+: MPEMIT   ( c -- )                        \ waits for printer to go online
+        BEGIN
+            ?PRINTER
+            YIELD
+        UNTIL
+        OUT @ FORM-WIDTH >
+        IF #LINE 1+! THEN
+        PEMIT
+        YIELD ;
+
+: CR'S     ( n -- )   0 DO  CR  LOOP ;
+
+: FORM-FEED
+        'form-feed' EMIT
+        #PAGE 1+!
+        #LINE 0! ;
+
+: .PRINT-FOOTER
+  PRINTING
+  IF
+    LINES/PAGE  #LINE @ -    0 MAX CR'S
+    CR ." hsf2000 Version " .ver 50 CTAB #PAGE @ 4 .R
+    FORM-FEED
+  THEN ;
+
+: .PRINT-HEADER
+   PRINTING
+   IF
+     ." Hsf2000 Print System "   \ TAB TODAY$ $. TAB NOW$ $.
+     CR
+   THEN ;
+
+\ MPRINT must clear the screen in case BIOS trys to print an error message
+: MPRINT
+        PRINTON
+        ?PRINTER  NOT ABORT" The printer is offline!"
+        ." Printing..."
+        CLOSE-OUTPUT
+        $" PRN" OPEN-OUTPUT
+        >FILE .PRINT-HEADER ;
+
+
+: ?FORMFEED                                     \ conditional form feed
+              PRINTING                          \ are we printing?
+              IF
+                #LINE @  LINES/PAGE >=
+                IF
+                   .PRINT-FOOTER
+                   .PRINT-HEADER
+                THEN
+              THEN ;
+              
+: lpt1   1 to lpt# ;
+: lpt2   1  to lpt# ;
+
+: >LPT   ' mpemit to emit  ;
+
+

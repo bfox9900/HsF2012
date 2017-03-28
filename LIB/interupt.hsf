@@ -1,0 +1,187 @@
+\ FORTH COM1 & COM2 RS232 ports HARDWARE INTERRUPT CONTROL
+\ with far segment buffers (2k)
+\ B.Fox 1994
+
+\ Updated for HSF2000 July 29 2015.  NOT TESTED (does not work in Windows box)
+\ this was REALLY BADLY implemented when I did it in 1994! oh dear was I stupid
+
+\ FOR "AT" compatibles only!!!
+\       This file is an attemp to make the hardware interupt software fit
+\ better with the INTELECT RS232 I/O software. Here the words that are
+\ reponsible for keeping track of the circulular Q's are made dependant on
+\ the USER-VAR "PORT#" which MUST BE UNIQUE for each task.
+
+FORTH DEFINITIONS
+
+[UNDEFINED BAUD  [IF] INCLUDE 8250.hsf [then]
+
+HEX
+   20 CONSTANT 8259.ISR                 \ 8259 chip interrupt service register
+   21 CONSTANT 8259.IMASK               \ 8259 chip interrupt mask register
+   04 CONSTANT com1.int#                \ Interrupt no. of COM1 on AT 8259
+   03 CONSTANT com2.int#                \ Interrupt no. of COM2 on AT 8259
+  800 CONSTANT 2K
+2K 1- CONSTANT LIMITER                  \ must be a NUMBER with all bits HIGH
+
+  3F8 CONSTANT COM1.BASE                \ These are used for speed in the
+  2F8 CONSTANT COM2.BASE                \ interrupt service routines
+
+\ ***** Please Read *****
+\ This code is a little strange.  I have made a short array called "]int#"
+\ to contain the interrupt numbers on the 8259 chip.
+\ This allows me to create a PORT# dependant constant called "The.int#"
+\ which make the code more versatile when enabling and disabling various
+\ hardware interupts.
+
+    ( reverse the #'s 03 & 04 for an XT computer )
+    2 1VAR ]int#     04 0 to ]int#    03 1 to ]int#
+
+\ PORT# dependant interrupt number translation constant
+: The.int# ( -- n )   PORT# @ ]int# ;
+
+\ in my older brain it is now clear that the HSForth SEgment structure
+\ has all the pointers I need to implement a FAR segment queue
+
+\ SEgment Stucture 
+
+  Struc
+       cell field: start_paragraph
+       cell field: segment_size
+       cell field: used_memory
+       cell field:
+
+
+\ These pointers that keep track of the circular Q's
+: FTAIL                         \ TAIL pointer to any FAR queue
+: FHEAD                         \ HEAD pointer to any FAR Queue
+
+
+\ circular increment  of the HEAD & TAIL pointers
+: HEAD1++ ( -- ) HEAD1 1+ LIMITER AND IS HEAD1 ;
+: TAIL1++ ( -- ) TAIL1 1+ LIMITER AND IS TAIL1 ;
+
+: HEAD2++ ( -- ) HEAD2 1+ LIMITER AND IS HEAD2 ;
+: TAIL2++ ( -- ) TAIL2 1+ LIMITER AND IS TAIL2 ;
+
+ 1 SEGMENT Com1Seg               \ COM1 buffer segment
+ 1 SEGMENT Com2Seg               \ COM2 buffer segment
+
+\ These operators put chars into the Q.
+: BUFF1!     Com1Seg @ HEAD1 1+ LIMITER AND DUP>R C!L R> IS HEAD1 ;
+: BUFF2!     HEAD2++  Com2Seg @ HEAD2 C!L ;
+
+\ These get chars from the Q.  * You don't need any other operators!
+: BUFF1@  ( -- c ) TAIL1++  Com1Seg @ TAIL1 C@L ;
+: BUFF2@  ( -- c ) TAIL2++  Com2Seg @ TAIL2 C@L ;
+
+\ Setup 8259 & 8250 chips and set interrupt mask
+: INTERRUPT-ON  ( port# -- )           \ * The ORDER here is CRITICAL
+        ?PORT#
+        PORT# @ >R                    \ save the current PORT#
+
+        IS PORT#                        \ set the new PORT#
+        0 MDM-CTL REGISTER P!           \ turn off RTS & DTR
+            RX/TX REGISTER P@ DROP      \ read the RX register to clear it
+           MDM-ST REGISTER P@ DROP      \ read MODEM status reg. to clear ERRORS
+        1  INT-EN REGISTER P!           \ enable recieve INTERRUPT only
+        B MDM-CTL REGISTER P!           \ RTS & DTR on. OUT2 on
+        8259.IMASK P@                   \ get current interupt mask
+        The.int# BRST                   \ Reset the 8259 bit to enable
+        8259.IMASK P!                   \ store the new interupt mask
+        Com1Seg 0 OVER 2I@ 0 FILLL      \ clear the buffer segment
+        Com2Seg 0 OVER 2I@ 0 FILLL      \ clear the buffer segment
+
+        R> PORT# ! ;                    \ Restore the old port#
+
+: INTERRUPT-OFF ( port# -- )
+        ?PORT#
+        THE PORT# >R
+
+        IS PORT#
+        8259.IMASK P@
+        The.int# BSET
+        8259.IMASK P!
+        0 INT-EN  REGISTER P!
+        0 MDM-CTL REGISTER P!
+
+        R> IS PORT#  ;
+
+\ QKEY  fetch a key from the head of the Q
+HEX
+: QKEY1  ( -- c )
+        BEGIN                                     \ enter a loop
+             HEAD1 TAIL1 <>                       \ until tail<>head
+             YIELD
+        UNTIL
+        BUFF1@ ;
+
+ : QKEY2  ( -- c )
+        BEGIN                                     \ enter a loop
+             HEAD2 TAIL2 <>                       \ until tail<>head
+             YIELD
+        UNTIL
+        BUFF2@ ;
+
+\ HI-LEVEL FORTH  interrupt handler
+HEX
+\ optimized interupt handler definitions
+
+OPT-ON
+CODE <COM1_ISR>
+   OPT" BEGIN
+        COM1.BASE P@  BUFF1!
+        20 8259.ISR P!
+        INT-ID REGISTER P@
+        2 AND 0=
+        UNTIL "
+END-CODE
+
+CODE <COM2_ISR>
+   OPT" BEGIN
+          COM2.BASE P@  BUFF2!
+          20 8259.ISR P!
+          INT-ID REGISTER P@
+          2 AND 0=
+        UNTIL "
+END-CODE
+
+
+INT: COM1-ISR  ( -- )    \ approx 100 uS response  (4.77MHz 8088)
+        <COM1_ISR>
+;INT
+
+INT: COM2-ISR  ( -- )    \ approx 100 uS response  (4.77MHz 8088)
+        <COM2_ISR>
+;INT
+
+\ install the interupts in the vector table
+ ( reverse 0C & 0B for an XT computer )
+ 0C INT-VECTOR IV=COM1
+ 0B INT-VECTOR IV=COM2
+
+ CA' COM1-ISR  IV=COM1 !
+ CA' COM2-ISR  IV=COM2 !
+
+CR ." Enable the COM1: INTERRUPT now?(Y/N) " ?YN
+[IF]    CR ." 2K RX buffer installed. Interrupt enabled." CR
+        2K Com1Seg MOVE-SEG
+        0 INTERRUPT-ON
+        IV=COM1 INSTALL  [THEN]
+
+CR ." Enable the COM2: INTERRUPT now?(Y/N) " ?YN
+[IF]    CR ." 2K RX buffer installed. Interrupt enabled." CR
+        2K Com2Seg MOVE-SEG
+        1 INTERRUPT-ON
+        IV=COM2 INSTALL  [THEN]
+
+\ re-define BYE to that the interupts are all remove when we exit Forth
+
+: BYE   ( -- )
+        0 INTERRUPT-OFF
+        IV=COM1 REMOVE
+        1 INTERRUPT-OFF
+        IV=COM2 REMOVE
+        BYE ;
+
+EXIT
+

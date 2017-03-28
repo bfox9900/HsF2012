@@ -1,0 +1,26 @@
+\ easy conditional for HSF2000
+
+: eatline
+         begin
+              bl word 
+            \  dup pad $!  pad $. bl emit
+              len 0=
+         until ;
+
+: NEED   ( -- )  FIND   0 <> IF eatline   THEN  ;  IMMEDIATE
+
+exit
+
+\ Test code
+
+  NEED  TEST  : TEST ." This word compiles ONLY if needed" ;
+  ." this line 1 should print" cr
+  cr
+  cr
+
+  Need TEST  : TEST2  ." This is test2" ;
+  cr
+  cr
+  ." This is line 2 that prints after" cr
+  
+

@@ -1,0 +1,70 @@
+\ strings.HSF slightly new approach to my old string system
+
+\ Wil Baden's toolbelt
+: c+!      ( n addr -- )          dup>r  c@ +  r> c! ;
+: append-char  ( char string -- ) dup>r  count dup 1+ r> c! + c! ;
+: +place   ( addr1 n dest -- )   2dup 2>r  count +  swap move 2r> c+! ;
+: place    ( addr1 n dest -- )   2dup 2>r  1+  swap  move  2r> c! ;
+: /string ( caddr1 u1 n -- caddr2 u2 ) rot over + rot rot - ;
+
+HEX
+\ build a string stack/array to hold input strings
+100 constant ss-width
+ss-width 1- constant max$len
+
+: stack-base  here ss-width + ;
+
+variable $depth
+
+DECIMAL
+: LEN      ( $1 -- length)     c@ ;
+: ITEMS    ( -- n)             $depth @  ;
+: new:     ( -- )              1 $depth +! ;
+: drop$    ( -- )   -          -1 $depth +! ;
+: ]stk$    ( ndx -- addr)      ss-width * stack-base + ;
+: TOP$     ( -- addr)          $depth @ ]stk$ ;
+: collapse ( -- )              $depth off ;
+: >new:top$ ( addr len -- top$) new: top$ dup >r place r> ;
+: >$PAIR   ( $1 $2 --  adr len $2) >r COUNT R> ;
+: move$    ( $1 $2 -- ) >$PAIR PLACE ;
+: push$    ( $ -- top$) count >new:top$ ;
+
+\ used primitives to build counted string functions
+: left$    ( $addr #char -- top$) >r count drop r>  >new:top$ ;
+: right$   ( $addr1 n  -- $addr2)  >$PAIR over min /string >new:top$ ;
+: +$       ( $1 $2 -- top$ ) swap  >$PAIR PUSH$ +PLACE TOP$ ;
+: mid$     ( adr$ start len -- top$) new: top$  2>r + 1+  2r> place top$   ;
+: pos$     ( adr$ char -- position ) >r count 2dup r> scan  drop nip swap - ;
+
+: compare$ ( $1 $2 -- -n:0:n ) count rot count compare ;
+ : $=       ( $1 $2 -- flag ) compare$ 0= ;
+ : +char    (  $ char -- $)   over append-char ;
+
+: :=""     ( caddr -- )        0 swap c! ;
+: :="      ( $addr -- <text> ) [CHAR] " word swap move$ ;
+
+\ these 2 words provide cheap automatic garbage collection
+: $.       ( $ -- ) count type collapse ;
+: $!       ( $1 $2 -- ) move$ collapse ;
+
+: split    ( str len char -- str1 len1 str2 len2 ) >r 2dup r> scan 2swap 2 pick - ;
+: snip     ( str len  -- ) 1- swap 1+ swap ;
+: separate ( str len char -- str1 len1 str2 len2 ) split 2swap snip 2swap ;
+
+: TEXT$ ( delimit-char -- $ )  WORD PUSH$ ;
+
+\ S" in Hsf2012 stacks up inputs in the string stack, be careful
+: S"    ( <text..> -- $addr len)
+        state @ 0=
+        if
+            [char] " TEXT$ count
+
+        else
+            postpone c"
+            postpone push$
+            postpone count
+        then ;  immediate
+        
+
+               
+

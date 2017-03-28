@@ -1,0 +1,5 @@
+
+
+: LASTWORD ( -- ADR COUNT )
+        context-seg >R
+        LATEST  R@  OVER cnt@ DUP>R  -  DUP  R>  R@ -ROT ;

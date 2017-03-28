@@ -1,0 +1,98 @@
+\ linker.hsf
+\       Create  fspec.MAP  with DOS LINK command:   LINK fspec/MAP
+\       LOAD-OVERLAY requires specific ending: .EXE .COM .BIN etc
+
+HEX
+
+[undefined] $<>L
+[if]
+ CODE $<>L
+        <% 93 89C1 89F3 5E 8CDA 1F 5F 07  F3A6 89DE 8EDA 89CB %>
+        <% 7409 9C 29C8 93 9D 7202 F7DB %>
+        next.
+ END-CODE
+
+[then]
+
+0 USER-VAR OVERLAY
+
+: LOAD-OVERLAY   ( fspec.xxx  seg-dscr  --  )
+        DUP to OVERLAY
+        0E + DUP>R OVER C@ 1+ CMOVE
+        R@ 4- R@ LOADS
+        R@ FILE-SIZE OVERLAY @ 4+ 2!
+        $" .MAP" 1+ 2@  [char] . R@ CMEMBER? R> ID! ;
+
+8000 SEGMENT OVERLAY-1   OVERLAY-1 @ DUP ,  ,   20 ALLOT OKLW
+\
+: OPEN-MAP
+        CLOSE-INPUT  THE OVERLAY 0E +  OPEN-INPUT ;
+
+: :NUMBER    ( -- n1 n2 adr )   \ nnnn:nnnn    Assumed at PAD
+        BASE @ >R
+        HEX 0 0 PAD 1+ CONVERT 0 SWAP CONVERT nip
+        r> BASE ! ;
+
+: -ABS?
+        2+ @ [ $" Abs" 1+ @ ] LITERAL <> ;
+
+: XCON
+        IF 2DROP
+        ELSE $" CREATE          " evaluate , ,
+        THEN ;
+
+: EXTERNAL  ( -- seg offset )
+        OPEN-MAP
+        0A0D  BL WORD COUNT I!
+        HERE 1+!
+        <FILE
+        BEGIN
+           LISTS @  0FF GW 012 +  THE R# 0= ABORT" Unknown"
+           LISTS @ HERE COUNT $<>L 0=
+        UNTIL
+        KBRD
+        :NUMBER  -ABS?
+        IF
+             SWAP THE OVERLAY @ + SWAP
+        THEN
+        CLOSE-INPUT [COMPILE] 2literal ; IMMEDIATE
+
+\
+: XOVL
+        THE OVERLAY 0E + COUNT + 2@  SWAP 4- SWAP
+        DO
+           DUP I +! 6
+        /LOOP
+        DROP ;
+
+: BIAS-OVERLAY   THE OVERLAY @        XOVL ;
+
+: DEBIAS-OVERLAY THE OVERLAY @ NEGATE XOVL ;
+
+: LINK-OVERLAY   ( fspec.xxx  seg-dscr  --  )
+        LOAD-OVERLAY  OPEN-MAP  <FILE
+        BEGIN
+                0FF GW  COUNT 4- Id@  [ $" Name" 1+ 2@ ] 2literal
+        D=  UNTIL
+        0FF GW DROP
+
+        BEGIN
+              0FF GW C@
+        WHILE
+             :NUMBER  -ABS?
+             XCON
+        REPEAT
+        0FF GW DROP 0FF
+        GW DROP
+
+        HERE-L 4+
+        BEGIN
+              0FF GW C@
+        WHILE
+           :NUMBER  -ABS? NOT XCON
+        REPEAT
+        HERE-L 6+ SWAP  THE OVERLAY 0E + COUNT + D!
+        KBRD
+        CLOSE-INPUT
+        BIAS-OVERLAY ;
+

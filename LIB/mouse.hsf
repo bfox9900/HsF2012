@@ -1,0 +1,242 @@
+\ MOUSE.FOX      Mouse interface to HS/FORTH windows    02MAR91
+\ updated for Hsf2012  Nov 4 2015 BJF
+
+[undefined] DEFER    [if]  include defer.hsf [then]
+
+\ This file contains a SUBSET of the functions that are available to the
+\ user through software interupt Hex 33.
+\       Forth assembler is used save space, as much as time,
+\ since the interface to these routines varies quite a bit in terms of
+\ input and output arguments. It would have saved little or nothing to
+\ create an "intcall" type word.
+\        All the low level CODE words are then used to create FORTH
+\ words where needed.
+\       The mouse can be forced to stay within the limits of a window
+\ created with MAKE-WINDOW.
+\       Simply pass the window descriptor name to the word MOUSE-TRAP
+\ The mouse will then be "TRAPPED" by the values assigned to that window
+\ until you change them.
+
+
+DECIMAL
+
+0 USER-VAR MOUSEFLAG
+
+\ These primitives define all the INT 51 functions from 0 to 23
+( #0 )
+CODE INIT_MOUSE  ( -- ? )
+                BX PUSH.
+                AX 0 IW MOV.  51 INT.
+                BX AX MOV.
+                next. 
+end-code
+
+\ Let's INIT the mouse right now & see if there's one around
+
+  INIT_MOUSE  0= ?( CR ." There is NO Mouse driver installed!" ABORT )
+
+
+\ Ok let's continue
+( #1 )
+CODE SHOW_CURSOR ( -- )
+                AX 1 IW MOV. 51 INT.
+                next. end-code
+( #2 )
+CODE HIDE_CURSOR ( -- )
+                AX 2 IW MOV. 51 INT.
+                next. end-code
+( #3 )
+CODE GET_MOUSE  ( -- row col button )   \ row, col values are pixels
+                BX PUSH.
+                BX 3 IW MOV.
+                AX 3 IW MOV. 51 INT.
+                DX PUSH.
+                CX PUSH.
+                next. end-code
+
+
+( #4 )
+CODE MOUSE_CURSOR! ( row col -- ) \ inputs are PIXELS not characters CX DX
+                CX BX MOV.
+                DX POP.
+                AX 4 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+( #5 )
+\ button#=0 for left, 1 for right
+CODE GET_BUTTON_PRESS ( button# -- button status, # of presses )
+                AX 5 IW MOV. 51 INT.
+                AX PUSH.
+                DX PUSH.
+                CX PUSH.
+                next. end-code
+
+( #6 )
+\ button#=0 for left, 1 for right button
+CODE GET_BUTTON_RELEASE ( button# -- X Y button status, # of releases)
+                AX 6 IW MOV. 51 INT.
+                AX PUSH.
+                DX PUSH.
+                CX PUSH.
+                next. end-code
+( #7 )
+CODE HOR_LIMITS! ( min max -- )
+                DX BX MOV.
+                CX POP.
+                AX 7 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+( #8 )
+CODE VERT_LIMITS! ( min max -- )
+                DX BX MOV.
+                CX POP.
+                AX 8 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+
+\ Causes Mouse to emulate the legendary light pen! (or not)
+\ ( Where did I leave that light pen anyway....)
+( #13 )
+CODE LIGHT_PEN_ON ( -- )
+                AX 13 IW MOV. 51 INT.
+                next. end-code
+( #14 )
+CODE LIGHT_PEN_OFF ( -- )
+                AX 14 IW MOV. 51 INT.
+                next. end-code
+( #15 )
+CODE MOUSE_SPEED! ( vert-speed hor-speed -- ) \ speeds are in mickeys/pixel
+                CX BX MOV.
+                DX POP.
+                AX 15 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+( #16 )
+\ Sets portion of screen to cause the mouse to dis-appear.
+\ You must call function 1 (SHOW_MOUSE) after this one.
+CODE CONDITIONAL_OFF ( low-row Right-col Up-row Left-col -- )
+                BX PUSH.
+                AX SI MOV.
+                BX DI MOV.
+                CX POP.
+                DX POP.
+                SI POP.
+                DI POP.
+                AX 16 IW MOV. 51 INT.
+                SI AX MOV.
+                DI BX MOV.
+                BX POP.
+                next. end-code
+
+( #19 )
+\ Set the threshhold (mickeys/second) at which point the cursor jumps to
+\ double speed
+CODE 2X-THRESHOLD ( n -- )
+                DX BX MOV.
+                AX 19 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+
+( #21 )
+\ Returns the number of bytes needed to store the mouse state.
+CODE MOUSE_BUFFER_SIZE ( -- n )
+                BX PUSH.
+                AX 21 IW MOV. 51 INT.
+                next. end-code
+
+( #22 )
+\ Save the state of the state of the mouse in a FAR segment.
+CODE SAVE_MOUSE ( seg offset -- )
+                DX BX MOV.
+                AX ES MOV.
+                ES POP.
+                AX 22 IW MOV. 51 INT.
+                ES AX MOV.
+                BX POP.
+                next. end-code
+
+( #23 )
+\ Reciprocal of function #22. Restore the mouse to the state in a FAR
+\ segment.
+CODE RESTORE_MOUSE ( seg offset -- )
+                DX BX MOV.
+                AX ES MOV.
+                ES POP.
+                AX 23 IW MOV. 51 INT.
+                ES AX MOV.
+                BX POP.
+                next. end-code
+
+( 28 )
+CODE MOUSE_PAGE!      ( crt-page# -- )
+                AX 28 IW MOV. 51 INT.
+                BX POP.
+                next. end-code
+
+( 29 )
+CODE MOUSE_PAGE@     ( -- crt-page# )
+                BX PUSH.
+                AX 29 IW MOV. 51 INT.
+                next. end-code
+
+\ HI LEVEL words to control things in TEXT mode
+
+: INIT-MOUSE INIT_MOUSE  MOUSEFLAG !
+             LIGHT_PEN_OFF ;            \ light pen goes on by default
+
+: MOUSE-TRAP  ( Window-descriptor -- ) \ limits mouse excursion to window
+                THE W# >R
+                >W
+                WRC 8* WLC 8* ( converted to pixels) HOR_LIMITS!
+                WBR 8* WUR 8* ( converted to pixels) VERT_LIMITS!
+                R> IS W# ;
+
+: MOUSE-ROW,COL ( -- row col )
+                THE MOUSEFLAG 0=
+                IF 0 0 EXIT THEN
+                GET_MOUSE DROP  8/ SWAP 8/ SWAP ;
+
+: MOUSE-XY!     ( row,col -- )
+               8* SWAP 8* SWAP MOUSE_CURSOR! ;
+
+: MOUSE-BUTTON  ( -- n )
+                THE MOUSEFLAG
+                0= IF 0 EXIT THEN
+                GET_MOUSE PLUCK PLUCK ;
+
+
+EXIT
+
+
+
+DEFER  MOUSE-VECTOR
+
+: MOUSE-KEY     ( -- key# )
+                BEGIN
+                   MOUSE-BUTTON
+                   ?DUP
+                UNTIL ;
+
+: <TRACKMOUSE>
+        MOUSE-BUTTON
+        IF
+           WCURSOR@ 8* SWAP 8* SWAP MOUSE_CURSOR!
+        THEN
+        IO-RESET ;
+
+
+
+: TRACK-ON
+        C-OFF
+        IO-STAY SHOW_CURSOR
+        ['] <TRACKMOUSE> IS MOUSE-VECTOR
+        ['] MOUSE-KEY TO KEY ;
+
+: TRACK-OFF
+        HIDE_CURSOR IO-RESET ;
+
+INIT-MOUSE
+
+\ F10= TRACK-ON
+
+

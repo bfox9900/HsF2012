@@ -1,0 +1,702 @@
+\ Last Revision: 14 Jul 2015
+
+
+0 [if]
+
+include e:\microFMS.f
+
+
+Forth Meets Smalltalk (FMS)
+
+ microFMS version 1.5
+ Douglas B. Hoffman
+ =============================
+ WHAT IS microFMS?
+ =============================
+
+Some prefer a minimalist objects extension.  In an effort to address
+this, presented here is microFMS (micro Forth Meets Smalltalk).
+
+=================
+microFMS Features
+=================
+
+- Small memory requirement.  Few lines of code.  About 30.
+- Class based single inheritance model.
+- Full encapsulation of data and methods.
+- Message Name Polymorphism with no restrictions on inheritance order.
+- Dynamic (late) binding of all methods.
+- Duck typing.
+- No juggling of object reference in method definitions.
+- Class variables.
+- No state smart words.
+- No restrictions on message names.
+- Compatible with Forth 200x Structures.
+
+[then]
+
+[defined] >M4TH [if]
+ONLY FORTH DEFINITIONS
+anew --fms--
+>M4TH
+[then]
+
+\ the program with some example classes follow
+[undefined] cell [if] 1 cells constant cell [then]
+
+here
+
+       8 1- constant #lists
+
+          0 value self
+get-current value dflt-cur
+          0 value ^class
+
+: dfa  ( cls -- a) [ #lists 1 + cells ] literal + ;
+: sfa  ( cls -- a) [ #lists 2 + cells ] literal + ;
+: wida ( cls -- a) [ #lists 3 + cells ] literal + ;
+
+#lists 4 + cells constant classSize
+
+: _mfa ( sel -- offset)
+       dup >r 2/ 2/ r@ xor
+       2/ 2/ r> xor #lists and cells ;
+
+: mfa  ( sel cls -- sel mfa) over _mfa + ;
+
+: fm   ( sel mfa -- xt) 
+       begin 
+          @ dup while
+          2dup cell+ @ =
+          if [ 2 cells ] literal + nip @ exit
+          then
+       repeat
+       drop throw ;
+
+create object     classSize dup allot object swap erase cell object dfa !
+
+: <super ( name-- wn..w1 n)
+         here dup >r to ^class classSize
+         allot ' >body dup r@ classSize move r@ sfa ! get-order
+         wordlist dup set-current r@ wida !
+         get-order
+         begin   r@ wida @  swap 1+ r> sfa @ >r  r@   object = until
+         r> drop set-order ;
+
+wordlist constant mwid  get-order mwid swap 1+ set-order
+
+: sel    ( name --)
+         mwid set-current 
+         create here _mfa , 
+         does> over @ over @ +
+               fm self >r swap to self
+               execute r> to self ;
+
+: gs     ( -- sel)
+         >in @  bl word count mwid search-wordlist
+         if >body nip
+         else >in ! sel here cell -
+         then ;
+
+: :m     ( name -- a xt)
+         dflt-cur set-current
+         gs ^class mfa here over @ , swap ! , here 0 , :noname ;
+
+: ;m     ( a xt --) postpone ; swap ! ; immediate
+
+: super  ( name --) ' >body ^class sfa @ mfa fm compile, ; immediate
+
+: (ivar) ( offset name --) 
+         create immediate ,
+         does> ( --a) @ postpone literal postpone self postpone + ;
+
+: bytes  ( n name --) ^class dfa dup @ (ivar) +! ;
+
+: >dict  ( cls -- o)  dup dfa @ align here swap allot tuck ! ;
+
+here swap - cr . .( bytes used)  \ 1716 SwiftForth
+
+\                           FMS ends
+\ =======================================================================
+
+\ =======================================================================
+\                          DEMO CODE BEGINS
+0 [if]
+
+\ optional extra defs for heap objects and implicit object initialization
+object to ^class :m init: ;m  :m free: ;m
+: (pre) ( cls -- cls n) dup dfa @ ;
+: (post) ( ...cls a -- o) tuck ! dup >r init: r> ;
+: >dict ( cls -- o) (pre) align here swap allot (post) ;
+: >heap ( cls -- o) (pre) allocate throw (post) ;
+: <free  ( o --) dup free: free throw ;
+
+[then]
+
+
+here
+create var <super object \ var is subclass of object
+  cell bytes data
+ :m !: ( n -- ) data ! ;m
+ :m +: ( n -- ) data +! ;m
+ :m @: ( -- n ) data @ ;m
+ :m p: ( -- ) self @: . ;m \ print self
+ :m init: 0 data ! ;m
+set-order
+
+var >dict value x
+33 x !:
+cr .( print var x should be 33 => )
+x p: 33
+
+
+create ptr <super var
+ cell bytes size \ size, in bytes, of memory allocated
+ variable ptr-cnt 0 ptr-cnt ! \ class variable
+ :m size: ( -- n )  size @ ;m
+ :m ptr: ( -- ptr ) data @ ;m
+ :m free:
+    data @ ?dup if free throw 0 data !  -1 ptr-cnt +! then
+        0 size ! ;m
+ :m new:  ( size -- )
+    self free:
+    dup allocate throw  data !   size !
+    1 ptr-cnt +! ;m
+ :m resize:  ( newsize -- )
+    data @ over resize throw  data !  size !  ;m
+ :m init: super init: 0 size ! ;m
+ :m cnt: ( -- n) ptr-cnt @ ;m
+set-order
+
+
+create string <super ptr
+
+ :m new: ( addr len -- )
+   dup super new: ( addr len ) data @ swap ( addr self len ) move ;m
+
+ :m add: ( addr len -- ) \ add text to end of string
+   dup ( addr-src len len )
+   size @ dup >r + self resize:  \ addr-src len
+   data @ r> + ( addr-src len dest) swap move ;m
+
+ :m @: ( -- addr len ) data @  size @ ;m
+
+ :m !: ( addr len -- ) self free: pad 0 self new: self add: ;m
+
+ :m p: self @: type ;m
+
+ :m +: ( char -- ) \ add char to end of string
+     size @ 1+ self resize:   self @: + 1- c! ;m
+set-order
+
+
+: lowerCase? ( char -- flag ) \ flag is true if char is lower case
+  [CHAR] a  [CHAR] z   WITHIN? ;
+
+\ Converts lower-case characters to upper case, modifying the contents
+\ starting at addr for cnt chars
+
+: to-upper   ( addr cnt -- )
+ OVER \ addr cnt addr
+ + SWAP  \ cnt+addr addr
+ ?DO I C@ DUP
+  lowerCase?
+  IF 32 - I C!
+  ELSE DROP
+  THEN
+ LOOP ;
+
+true value case-sensitive? \ used for searches in string+ objects
+
+create string+ <super string
+  cell bytes start
+  cell bytes end
+  1 bytes theChar \ used for char searches
+ :m reset: 0 start !  0 end !  ;m
+ :m new: ( addr len -- ) super new:  self reset: ;m
+ :m !: ( addr len -- ) super !:  self reset: ;m
+ :m start: ( -- pos-addr ) start ;m
+ :m end: ( -- len-addr ) end ;m
+ \ the number of chars remaining after the selection
+ :m rem: ( -- remainder ) size @ end @ - ;m
+ :m 1st: ( -- char ) \ return first char of substring
+    data @ start @ + ( addr ) c@ ;m
+ :m last: ( -- char ) \ return last char of substring
+    data @ end @ + 1- ( addr ) c@ ;m
+ :m ?idx: ( idx -- idx )
+     dup 0 size @
+     WITHIN 0= IF TRUE ABORT" string+ index out of range" THEN ;m
+
+\ at: and to: indexes refer to the entire string
+ :m at: ( idx -- char )
+     self ?idx:
+     data @ + c@ ;m
+ :m to: ( char idx -- )
+     self ?idx:
+     data @ + c! ;m
+ :m upper: \ converts entire string to upper case
+      self @: to-upper ;m
+
+ :m @sub: ( -- addr len ) \ fetch substring
+    data @ start @ + ( addr ) end @ start @ - ;m
+
+ :m selectAll: \ select entire string
+    0 start ! size @ end ! ;m
+
+\ compare addr1 len1 to the current *substring*
+ :m =sub: ( addr1 len1 -- f ) \ observes case setting; true if equal, false if not
+    DUP end @ start @ - <> IF 2drop FALSE EXIT THEN  \ get out early if length mismatch
+    0 0  locals| str1 selfStrCopy len1 addr1 |
+    case-sensitive?
+    IF addr1 len1
+       self @sub: COMPARE 0=
+    ELSE
+    string+ >heap string+ >heap to str1 to selfStrCopy
+    self @sub: selfStrCopy new: \ make a temporary duplicate string object in the heap
+    addr1 len1 str1 new: \ make a temporary duplicate string object in the heap
+    selfStrCopy upper:   str1 upper: \ make both string copies uppercase
+    selfStrCopy @:  str1 @: COMPARE 0=
+    selfStrCopy <free str1 <free
+    THEN
+    ;m
+
+ \ compare addr1 len1 to the entire string
+ :m =: ( addr1 len1 -- true | false ) \ observes case setting; true if equal, false if not
+     self selectAll:
+     self =sub:
+     ;m
+
+\ case insensitive search
+\ Do not invoke CIsearch: directly.  Rely on the case-sensitive? switch.
+
+ :m CIsearch: ( addr1 len1 -- true | false )
+    string+ >heap string+ >heap locals| str1 selfStrCopy len1 addr1 |
+    self @: selfStrCopy new: \ make a temporary duplicate string object in the heap
+    start @ selfStrCopy start: !   end @ selfStrCopy end: !
+    addr1 len1 str1 new: \ make a temporary duplicate string object in the heap
+    str1 @: TO len1 TO addr1
+    selfStrCopy upper:   str1 upper: \ make both string copies uppercase
+
+        selfStrCopy ptr: selfStrCopy end: @ + ( start-addr) selfStrCopy rem: ( len )
+            addr1 len1 search
+        IF \ found
+          ( u3 ) drop
+          ( c-addr3 ) selfStrCopy ptr: - dup len1 + end ! start !
+          true
+        ELSE  2drop false
+        THEN
+        str1 <free selfStrCopy <free \ dispose the temp strings
+   ;m
+
+ :m search: ( addr len -- true | false )
+     locals| len addr |
+     addr len
+    \ first do rationality check
+    \ return false if len to find is greater than remainder
+      dup self rem: > IF 2drop false exit THEN
+    case-sensitive?
+    IF 2drop \ do case sensitive search
+      super ptr: end @ + ( start-addr) self rem: ( len)  addr len search
+      IF \ found
+        ( u3 ) drop
+        ( c-addr3 ) super ptr: - dup len + end ! start !
+        true
+      ELSE  2drop false
+      THEN
+    ELSE \ do case insensitive search
+       self CIsearch:
+    THEN
+    ;m
+
+:m chsearch: ( char -- flag )
+   theChar c!  theChar 1 self search: ;m
+
+ :m delete:  \ deletes the substring defined by START and END
+             \ leaves START at the same place, END is set to START
+     end @  start @ - 1 < IF exit THEN
+     super ptr: end @ +   \ src
+     super ptr: start @ + \ src dest
+     self rem: \ src dest cnt
+     move
+    size @  end @ start @ - -  self resize:
+    start @ end !
+     ;m
+
+\ inserts text starting at END, START and END are moved to end of inserted text
+ :m insert: \ { addr len -- }
+    locals| len addr |
+    size @ len + self resize:
+    super ptr: end @ + dup ( src src ) len + ( dest ) self rem: len - ( cnt ) MOVE
+    addr ( src ) super ptr: end @ + ( dest ) len  MOVE
+    end @ len + dup start ! end ! ;m
+
+\ inserts char at END, START and END are moved to just past inserted char
+ :m chinsert: ( c -- )
+    theChar c!  theChar 1 self insert: ;m
+
+\ replace selected text, if any, with given text
+ :m replace: ( addr len -- )
+     self delete: self insert: ;m
+
+\ Search for text1 starting at END.
+\ If found replace with text2.
+\ Success flag is returned.
+ :m sch&repl:  \ { addr1 len1 addr2 len2 -- flag }
+    locals| len2 addr2 len1 addr1 |
+    addr1 len1 self search: dup
+    IF addr2 len2 self replace: THEN ;m
+
+\ Reset self and replaces all occurrences of (addr1 len1) by (addr2 len2)
+\ in the WHOLE of self.  Self is lastly reset again.
+ :m replall: \ { addr1 len1 addr2 len2 -- }
+    locals| len2 addr2 len1 addr1 |
+ self reset:
+ BEGIN
+   addr1 len1 self search:
+ WHILE
+  addr2 len2 self replace:
+ REPEAT
+ self reset:
+;m
+
+
+ :m d:  \ formatted dump of string for debugging
+   cr ."                     1                   2                   3                   4"
+   cr ." 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0"
+   cr  self size: 38 min 0 ?DO space i self at: emit LOOP
+   cr start @ 40 min 2* spaces [char] S emit
+   cr end @ 40 min 2* spaces [char] E emit
+   cr ." start= " start @  ."  end= " end @  ."  rem= " self rem: . ."  size= " size @
+      ."   case-sensitive?= " case-sensitive? .
+ ;m
+
+:m skipBlanks: \ skip leading blanks, tabs, etc
+    BEGIN
+      end @ size @ = IF exit THEN
+      end @ self at: 33 <
+    WHILE
+      1 end +!
+    REPEAT
+     end @ start ! ;m
+
+:m skipChars: ( char -- )
+    locals| c |
+    BEGIN
+      end @ size @ = IF exit THEN
+    end @ self at:
+    case-sensitive? 0=
+    IF dup lowerCase? IF 32 - THEN
+    THEN
+     c =
+    WHILE
+      1 end +!
+    REPEAT
+     end @ start ! ;m
+
+:m CIword: \ { c -- flag }
+    dup ( c c ) lowerCase? IF  32 - THEN
+    dup self skipChars:
+    super ptr: start @ + \ c addr
+    self rem: \ c addr len
+    over    \ c addr len addr
+    +       \ c addr addr+len
+    swap    \ c addr+len addr
+    ?DO dup I C@ dup lowerCase? IF 32 - THEN
+         = IF I super ptr: - end ! UNLOOP drop TRUE EXIT THEN LOOP
+    drop FALSE
+    ;m
+
+\ Parse the string for text ending with char c.
+\ Leading blanks are skipped.
+\ Use @sub: to retrieve the substring if true is returned.
+\ Subsequent use of word: will automatically advance just past
+\ the last "hit" and continue to skip leading blanks.
+:m word: \ { c -- flag }
+    case-sensitive? 0= IF ( c ) self CIword: exit THEN
+    dup self skipChars:
+    super ptr: start @ + \ c addr
+    self rem: \ c addr len
+    over    \ c addr len addr
+    +       \ c addr addr+len
+    swap    \ c addr+len addr
+    ?DO dup I C@ = IF I super ptr: - end ! UNLOOP drop TRUE EXIT THEN LOOP
+    drop FALSE
+    ;m
+
+:m replLast: ( char -- ) \ replace last char in string with given char
+   self @: + 1- c! ;m
+
+set-order
+
+
+cr .( test heap object and implicit init: )
+var >heap value x
+
+x p:
+
+x <free
+
+string+ >dict value s
+
+: tsub \ { obj -- }
+  locals| obj |
+  false to case-sensitive?
+  s" %HL%" s" hello" obj replall:
+  s" %WLD%" s" world" obj replall:
+  s" %%" s" %" obj replall: ;
+
+
+: unescape \ { obj -- }
+  locals| obj |
+  s" %" s" %%" obj replall: ;
+
+s" Start: %hl%,%wld%! :End" s !:
+
+cr .( demonstrate replall: method of class string+ ) cr
+s p:
+\ Start: %hl%,%wld%! :End
+cr
+s tsub s p:
+\ Start: hello,world! :End
+
+s" abba%daabba" s !:
+
+s unescape
+cr
+s p:
+\ abba%%daabba
+
+s" hello" s !:
+cr .( print s should be 'hello' => )
+s p:
+cr .( print s should be 'hello world' => )
+s"  world" s add:  s p:
+cr .( print s should be 'hello world!' => )
+char ! s +: s p:
+cr .( inspect class variable should be 1 => )
+s cnt: .
+
+string >dict value s2
+s" goodbye" s2 new:
+cr .( print s2 should be 'goodbye' => )
+s2 p:
+cr .( inspect class variable should be 2 => )
+s2 cnt: .
+
+
+s free:
+s2 free:
+cr .( inspect class variable should be 0 => )
+s cnt: .
+
+create testClass <super var
+  cell bytes stringIvar \ will contain an object
+  cell bytes x
+  1 bytes charz
+:m init:
+   [char] & charz c!
+   999 x !
+   string >dict stringIvar !
+   s" a string ivar" stringIvar @ new:
+   777 super !:
+   ;m
+:m p: cr ." print ivar stringIvar, should be 'a string ivar' => "
+         stringIvar @ p: \ message send to ivar
+      cr ." print x, should be 999 => " x @ .
+      cr ." print charz, should be '&' => " charz c@ emit
+      cr ." print  super @:, should be 777 => " super @: .
+       ;m
+set-order
+
+
+testClass >dict value t1
+
+\ t1 init:
+t1 p:
+
+\ print ivar stringIvar, should be 'a string ivar' => a string ivar
+\ print x, should be 999 => 999
+\ print charz, should be '&' => &
+\ print  super @:, should be 777 => 777
+
+
+cr .( test find method error condition, object x does not know message add: )
+cr
+\ x add: \ => will likely crash
+
+: foo'
+  string+ >heap locals| s |
+
+  s" ABCd" s !: ." the character " 0 s at: emit
+  ."  is the first character of " s p:
+
+  s" EFG" s add: cr s p: ."  after adding EFG"
+
+  false to case-sensitive?
+  s" cde" s search: if s delete: then cr s p:
+  ."  is what's left after a search and delete for cde "
+
+  s <free
+   ;
+cr foo'
+
+0 [if]
+the character A is the first character of ABCd
+ABCdEFG after adding EFG
+ABFG is what's left after a search and delete for cde ok
+[then]
+
+
+0 [if]
+
+microFMS makes it very easy to create new methods, so factoring of method
+code is thus encouraged.  *All* message sends are dynamic (late bound).
+This allows "Open Recursion" in class definitions.  A special variable
+called SELF allows a method to invoke another method of the same object.
+This allows a method defined in a class to invoke another method that is
+defined later, either in the same class or some subclass thereof.  Of
+course if the method has not been redefined then the last definition, up
+the superclass hierarchy chain, will be invoked.
+
+Forth is not Smalltalk.  Everything is *not* an object.  Normal Forth
+code and objects must get along together seamlessly or the advantage of
+adding objects to Forth is lost.  For example, one should be able to
+write a normal Forth word that can receive and act on *any* object passed
+to it via the stack without having to resort to treating the stack item
+(object) in a special way.  The Forth word should be able to directly and
+simply send any message to any passed-in object.  For example:
+
+
+ : foo ( object -- )
+    PRINT   ;  \ print: is a message that will be sent to the passed-in object
+
+ Foo should work for any class of object that "understands" the PRINT message.
+ Foo should work even on object types that have yet to be written.  The only
+ requirement is that the newly written class/object understand the message
+ PRINT .   How each class of object responds to print can of course vary
+ infinitely.
+
+
+ =============================
+ OPEN, EXTENSIBLE, FLEXIBLE
+ =============================
+
+ The complete source is freely provided for microFMS and that source is
+written in ANS standard Forth.  Since Forth itself is open, extensible,
+and flexible then microFMS is as well.  One can add or remove as many
+behaviors/features as desired.
+
+ =======================
+
+ THE microFMS USER WORDS
+ =======================
+
+ The microFMS user words are often the same as in FMS, but there are
+differences.  Below is a list of the FMS user words with a brief
+description of their purpose.  Stack effects are not shown.  A detailed
+usage glossary for these words, with stack effects, follows the list.
+
+  1) CREATE       \ begin a class definition
+  2) SET-ORDER    \ end a class definition
+  3) <SUPER       \ declare the superclass
+  4) BYTES        \ instance variable (ivar) declaration
+  5) :M           \ begin a method definition
+  6) ;M           \ end a method definition
+  7) SELF         \ pseudo-ivar for sending message to self
+  8) SUPER        \ pseudo-ivar for invoking superclass methods
+  9) OBJECT       \ the root class for all classes
+ 10) >DICT        \ instantiate a nameless object in the dictionary
+ 11) SEL          \ force a pre-defined word to be redefined as a message
+
+ ======================
+ Use of microFMS Words
+ ======================
+
+CREATE ( "spaces<name>" -- )
+ Begins the definition of a new class. This is a defining word. The name of the
+ new class must come directly after CREATE.  This is a standard Forth word.
+
+<SUPER ( "spaces<superclassname>" -- )
+
+ Declares the superclass of the new class being defined.  All classes must have
+ an explicitly declared superclass.
+
+SET-ORDER ( wn...w1 n -- )
+ Ends the definition of a class.  This is a standard Forth word.
+
+BYTES  ( u "spaces<name>" -- )
+ The sole primitive for defining new ivars. Bytes requires the size of the ivar,
+ in addressable units and must be followed by the name of the ivar.
+
+:M  ( "spaces<name:>" -- addr methodXT )
+ :m <name> ... :m is analogous to ":" when creating a new colon definition.
+ For example: locals can be used as per normal if desired.  Any word or
+ operation that is legal in a normal Forth colon definition is available and
+ legal in a microFMS method definition.
+
+
+ :m begins a new method definition. Can only be used inside a class definition.
+ Performs three functions simultaneously: 1) Defines a new message name only if
+ it has not previously been defined in any class (message names have global
+ scope).  2) Defines the method that is to be invoked when an object or ivar of
+ that class receives the given message. 3) Implicitly over rides, if necessary,
+ an existing method in the superclass chain.
+
+;M  ( addr methodXT -- )
+ Ends a method definition and stores the method's XT where it can be
+ subsequently retrieved.  Analogous to ";" in a normal colon definition.
+
+SELF ( "spaces<messagename:>"-- addr)
+ A pseudo ivar only used in method definitions. When it is the receiver of a
+ message it will compile a late bound message send using the method that has
+ already been defined either in the current class or in the superclass chain
+ hierarchy.  When used without a message it will simply return the base address
+ of the object.
+
+SUPER ( "spaces<messagename>" --  )
+ A pseudo ivar only used in method definitions. As the receiver of a message it
+ will compile the method that has already been defined one level up in the
+ superclass chain hierarchy, skipping over the already defined method in the
+ current class definition.  SUPER must be followed by a message name.  If the <
+ messagename> method has not been redefined then this use of SUPER will be
+ equivalent to the use of SELF.
+
+>DICT   ( ^class -- ^obj )
+ Instantiates a nameless object in the dictionary. Must be preceded by the name
+ of a class and will return an object pointer.  >DICT can be used at compile
+ time or interpret time.
+
+ =======================
+ STRUCTURES AND microFMS
+ =======================
+ microFMS ivars are compatible with Forth 200x structures:
+
+ begin-structure point
+   1 cells +field p.x
+   1 cells +field p.y
+ end-structure
+
+ begin-structure rect
+   point +field r.tl
+   point +field r.br
+ end-structure
+
+ create structTest <super object
+   rect bytes irect
+ set-order
+
+ structTest >dict value t1
+
+ t1 . 16873864
+
+ t1 r.tl p.x . 16873864
+ t1 r.tl p.y . 16873868
+ t1 r.br p.x . 16873872
+ t1 r.br p.y . 16873876
+
+
+ Thanks to Coos Haak for correcting an error in the use of throw in the "find method" word fm.
+ Thanks to Josh Grams for pointing out need to make _mfa 64-bit compatible.
+ [then]
+
+

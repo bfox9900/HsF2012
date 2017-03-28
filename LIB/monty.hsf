@@ -1,0 +1,691 @@
+\ monty.f  provides "python" type string functions for B Fox string system
+\  ( monty ... python ... get it ?  :-)
+
+\ On a 16 bit system these extensions consume only 1206 bytes of Forth code space!
+
+
+
+
+\ Feb 26 2006  Added formatting words
+\       spaces$ ( n -- $)               \ create a string of n spaces in length
+\       padded$ ( str n -- )             \ create a pad of spaces
+\       ljust$ ( str,n -- top$)          \ formats str, left justified
+\       rjust$ ( str,n -- $)             \ format right justified
+\       center$ ( str n -- $)            \ centre str n wide
+\       lstrip$                         \ remove leading chars
+\       rstrip$                         \ remove trailing chars
+\       strip$                          \ remove leading and trailing chars
+\       replace$                        \ replace all occurrences of char
+\       remove$                         \ remove all occurrences of char
+\       startswith$                     \ tests if string starts with char
+\       endswith$                       \ tests if string ends with char
+\       expand-tab                      \
+
+
+
+[undefined] mid$ [if] include strings.hsf [then]
+
+
+0 [if]    *** Python Functions that are reproduced in Forth ***
+
+center( width[, fillchar])
+        Return centered in a string of length width. Padding is done using the
+        specified fillchar (default is a space). Changed in version 2.4: Support
+        for the fillchar argument.
+
+count( sub[, start[, end]])
+        Return the number of occurrences of substring sub in string
+        S[start:end]. Optional arguments start and end are interpreted as in
+        slice notation.
+
+
+
+endswith( suffix[, start[, end]])
+        Return True if the string ends with the specified suffix, otherwise
+        return False. With optional start, test beginning at that position.
+        With optional end, stop comparing at that position.
+
+expandtabs( [tabsize])
+        Return a copy of the string where all tab characters are expanded using
+        spaces. If tabsize is not given, a tab size of 8 characters is assumed.
+
+find( sub[, start[, end]])
+        Return the lowest index in the string where substring sub is found,
+        such that sub is contained in the range [start, end). Optional arguments
+        start and end are interpreted as in slice notation. Return -1 if sub
+        is not found.
+
+index( sub[, start[, end]])
+        Like find(), but raise ValueError when the substring is not found.
+
+isalnum( )
+        Return true if all characters in the string are alphanumeric and there
+        is at least one character, false otherwise. For 8-bit strings, this
+        method is locale-dependent.
+
+
+isspace( )
+       Return true if there are only whitespace characters in the string and
+       there is at least one character, false otherwise. For 8-bit strings, this
+       method is locale-dependent.
+
+
+istitle( )
+       Return true if the string is a titlecased string and there is at least
+       one character, for example uppercase characters may only follow uncased
+       characters and lowercase characters only cased ones. Return false
+       otherwise. For 8-bit strings, this method is locale-dependent.
+
+
+join( seq)   ( HSF2000 uses +$ to concatentate )
+        Return a string which is the concatenation of the strings in the
+        sequence seq. The separator between elements is the string providing
+        this method.
+
+ljust( width[, fillchar])
+        Return the string left justified in a string of length width. Padding
+        is done using the specified fillchar (default is a space). The original
+        string is returned if width is less than len(s). Changed in version 2.4:
+        Support for the fillchar argument.
+
+lstrip( [chars])
+        Return a copy of the string with leading characters removed. The chars
+        argument is a string specifying the set of characters to be removed.
+        If omitted or None, the chars argument defaults to removing whitespace.
+        The chars argument is not a prefix; rather, all combinations of its
+        values are stripped:
+        >>> '   spacious   '.lstrip()
+                'spacious   '
+        >>> 'www.example.com'.lstrip('cmowz.')
+        'example.com'
+
+Changed in version 2.2.2: Support for the chars argument.
+         replace( old, new[, count])
+         Return a copy of the string with all occurrences of substring old
+         replaced by new. If the optional argument count is given, only the
+         first count occurrences are replaced.
+
+reverse( string )
+         Return a string with that is string in reverse order.
+
+rfind( sub [,start [,end]])
+         Return the highest index in the string where substring sub is found,
+         such that sub is contained within s[start,end]. Optional arguments
+         start and end are interpreted as in slice notation.
+         Return -1 on failure.
+
+rindex( sub[, start[, end]])
+         Like rfind() but raises ValueError when the substring sub is not found.
+
+rjust( width[, fillchar])
+        Return the string right justified in a string of length width. Padding
+        is done using the specified fillchar (default is a space). The original
+        string is returned if width is less than len(s). Changed in version 2.4:
+        Support for the fillchar argument.
+
+rsplit( [sep [,maxsplit]])
+        Return a list of the words in the string, using sep as the delimiter
+        string. If maxsplit is given, at most maxsplit splits are done,
+        the rightmost ones. If sep is not specified or None, any whitespace
+        string is a separator. Except for splitting from the right, rsplit()
+        behaves like split() which is described in detail below.
+        New in version 2.4.
+
+rstrip( [chars])
+        Return a copy of the string with trailing characters removed. The chars
+        argument is a string specifying the set of characters to be removed.
+        If omitted or None, the chars argument defaults to removing whitespace.
+        The chars argument is not a suffix; rather, all combinations of its
+        values are stripped:
+        >>> '   spacious   '.rstrip()
+            '   spacious'
+        >>> 'mississippi'.rstrip('ipz')
+                'mississ'
+
+Changed in version 2.2.2: Support for the chars argument.
+
+split( [sep [,maxsplit]])
+        Return a list of the words in the string, using sep as the delimiter
+        string. If maxsplit is given, at most maxsplit splits are done. (thus,
+        the list will have at most maxsplit+1 elements). If maxsplit is not
+        specified, then there is no limit on the number of splits (all possible
+        splits are made). Consecutive delimiters are not grouped together and
+        are deemed to delimit empty strings
+        (for example, "'1,,2'.split(',')"returns "['1', '', '2']").
+        The sep argument may consist of multiple characters
+        (for example, "'1, 2, 3'.split(', ')" returns "['1', '2', '3']").
+        Splitting an empty string with a specified separator returns "['']".
+        If sep is not specified or is None, a different splitting algorithm is
+        applied. First, whitespace characters (spaces, tabs, newlines, returns,
+        and formfeeds) are stripped from both ends. Then, words are separated by
+        arbitrary length strings of whitespace characters. Consecutive
+        whitespace delimiters are treated as a single delimiter
+        ("'1 2 3'.split()" returns "['1', '2', '3']").
+        Splitting an empty string or a string consisting of just whitespace
+        returns an empty list.
+
+
+splitlines( [keepends])
+        Return a list of the lines in the string, breaking at line boundaries.
+        Line breaks are not included in the resulting list unless keepends is
+        given and true.
+
+startswith( prefix[, start[, end]])
+        Return True if string starts with the prefix, otherwise return False.
+        With optional start, test string beginning at that position. With
+        optional end, stop comparing string at that position.
+
+strip( [chars])
+        Return a copy of the string with the leading and trailing characters
+        removed. The chars argument is a string specifying the set of characters
+        to be removed. If omitted or None, the chars argument defaults to
+        removing whitespace. The chars argument is not a prefix or suffix;
+        rather, all combinations of its values are stripped:
+    >>> '   spacious   '.strip()
+    'spacious'
+    >>> 'www.example.com'.strip('cmowz.')
+    'example'
+        Changed in version 2.2.2: Support for the chars argument.
+
+swapcase( )
+        Return a copy of the string with uppercase characters converted to
+        lowercase and vice versa. For 8-bit strings, this method is locale-dependent.
+
+
+title( )
+        Return a titlecased version of the string: words start with uppercase
+        characters, all remaining cased characters are lowercase.
+        For 8-bit strings, this method is locale-dependent.
+
+
+zfill( width)
+        Return the numeric string left filled with zeros in a string of length
+        width. The original string is returned if width is less than len(s).
+        New in version 2.2.2.
+
+[then]
+
+\ reference strings
+
+decimal
+
+\ ** this is how Python does things. Forth uses code for this simple stuff instead. Removed **
+\ 26 $variable alpha$     alpha$   :=" ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+\ 16 $variable numeric$   numeric$ :=" 0123456789"
+\ 16 $variable HEX$       hex$     :=" 0123456789ABCDEF"
+
+\ 127 $variable search$
+\ 127 $variable searchchars$
+
+\ but we can use some prefab strings for the complex stuff
+create vowels$ ," aeiouAEIOU"
+create punctuation$ ," !@#$%^&*()_+<>?;'\,./:|"
+
+\ create abuffer for strip chars to remove
+
+255 $variable stripchar$
+
+
+
+HEX
+: <tolower> ( c -- c )  20 or ;
+
+: <toupper> ( c -- c ) 05f and ;
+
+\ character test Primitives
+
+[undefined] within? [if]
+
+: within? ( n min max -- ?)  1+ within ;
+
+[then]
+
+
+[undefined] lower? [if]
+: lower? ( char -- ?)
+        [char] a [char] z within? ;
+[then]
+
+[undefined] upper? [if]
+: upper? ( char -- ?)
+        [char] A [char] Z within? ;
+[then]
+
+: alpha? ( char -- ?)
+        dup lower?  swap  upper?  or ;
+
+: adigit? ( char -- ?)
+        [char] 0 [char] 9 within? ;
+
+
+: alphanumeric?
+        dup  alpha? swap adigit?  or ;
+
+
+
+[undefined] tolower [if]
+
+: tolower ( c -- c )
+        dup upper? if <tolower> then ;
+
+[then]
+
+
+
+
+
+[undefined] toupper [if]
+
+: toupper ( c -- c)
+        dup lower? if <toupper> then ;
+
+[then]
+
+
+: hex?  ( char -- ?)
+        DUP adigit?  swap toupper  [char] A [char] F within?  OR ;
+
+
+[undefined] lower [if]
+: lower ( $ -- )  \ converts string in place Primitive
+         count bounds
+         ?do
+            i c@
+            dup upper?
+            if  <tolower> i c!
+            else drop
+            then
+         loop ;
+[then]
+
+[undefined] upper [if]
+: upper ( $ -- )  \ converts string in place Primitive
+        count bounds
+        ?do
+           i c@
+           dup LOWER?
+           if  <toupper> i c!
+           else drop
+           then
+        loop ;
+[then]
+
+\ monty functions begin ........................................................
+
+[undefined] ]$ [if]
+: ]$  ( adr$ n --  adr$[n] )  \ return the address of of the nth char in a string
+        1+ + ;                \  Python:  name[9] -->  fORTH: name 9 ]$ C@
+[then]
+
+: capitalize$ ( $ -- $ )  \ Return a copy of the string with 1st char UPPERCASE
+        push$ 0 ]$ C@ toupper
+        top$  0 ]$ C!
+        top$ ;
+
+
+\ **********************************************************************
+[UNDEFINED] upper$          \ moved to ANSFORTH.HSF July 2007
+
+[IF]
+
+: upper$  ( $ -- $ )   \ Return a copy of the string converted to UPPERCASE
+        push$ dup upper ;
+
+
+: lower$  ( $ -- $ )   \ Return a copy of the string converted to lowercase.
+        Push$ dup lower ;
+
+[THEN]
+\ **********************************************************************
+
+: swapcase$ ( $ -- $ )
+        push$
+        dup count bounds
+        do
+           i c@ dup LOWER?
+           if
+                <toupper> i c!
+           else
+                dup upper?
+                if <tolower> I c!
+                else drop
+                then
+            then
+        loop
+;
+
+\ primitive used to test for false flag
+: ?continue ( ? -- ? )
+        0= if drop false leave then ;
+
+: $foreach ( $ -- flag limit index )
+        true swap count bounds ;
+
+: $isUpper? ( $ -- ?)
+        $foreach
+        do
+          i c@ upper?
+           0= if drop false leave then
+        loop ;
+
+: $isTitle? ( $ -- ?)    \ IS THIS STRING A TITLE?
+          false
+          over 0 ]$ c@  upper? or  \ first letter is Caps?
+          over count bounds
+          do
+             I c@ BL =
+             if
+               I 1+  upper?  or
+             then
+          1 /loop
+          nip ;
+
+
+
+: $isLower? ( $ -- ?)
+        $foreach
+        do
+          i c@
+          lower?
+           0= if drop false leave then
+        loop ;
+
+: $isAlpha? ( $ -- ?)
+        $foreach
+        do
+          i c@ alpha?
+           0= if drop false leave then
+        loop ;
+
+: $isDigit? ( $ -- ?)
+        $foreach
+        do
+          i c@ adigit?
+           0= if drop false leave then
+        loop ;
+
+: $isAlphaNum ( $ -- ?)
+        $foreach
+        do
+          i c@ alphanumeric?
+           0= if drop false leave then
+        loop ;
+
+: $isSpace ( $ -- ?)
+        $foreach
+        do
+           i c@ bl <>
+           if drop false leave then
+        loop ;
+
+: $endswith ( $ suffix$ -- ? )
+        dup len ( $, suffix$, len[suffix$] )
+        >R
+        SWAP R> RIGHT$ $= ;
+
+: $startswith ( $ prefix$ -- ?)
+        dup len ( $, prefix$, len[prefix$] )
+        >R
+        SWAP R> left$ $= ;
+
+
+\ output formatting, with concepts from Python
+decimal
+
+\ usage of padding and fillers.
+\ Note: You must set the fillchar value. Default value is BL (space character)
+\       CHAR * >fillchar
+\       astring$ 20 padded$
+\       astring$ 20 ljust$
+\       astring$ 20 rjust$
+
+
+
+bl value fillchar       \ default fill character to space
+
+: >fillchar      to fillchar ;
+
+: filler$ ( n -- $)     \ create a string of n spaces in length
+        new.top$ !len                       \ store the count in a new temp $
+        count fillchar fill             \ put the spaces into the string
+        top$ ;                          \ return the string
+
+: <padding$> ( str n -- $ )           \ create a pad of spaces    primitive
+         over len - 0 max filler$ ;   \ calculate the spaces needed and make $
+
+: ljust$ ( str,n -- top$)          \ formats str, n chars wide flush left
+        <padding$> +$  ;                   \ concatenate str+padded$
+
+: rjust$ ( str,n -- $)            \ format right justified
+        <padding$> ( str top$) swap +$  ;  \ concatenate padded$+str
+
+: center$ ( str,n -- $)
+        over len - 2/ 0 max dup >R
+        filler$  swap +$  r> filler$ +$ ;
+
+\ Examples
+0 [if]
+
+: $.left ( str,n -- )                   \ prints str, n chars wide
+        ljust$ $. ;
+
+: $.r    ( str,n -- )                   \ print right justified
+        rjust$ $. ;
+
+char * to fillchar
+top$ :=" Test 1 2 3"
+top$ 30 center$ $.   ***************Test 1 2 3*************** ok
+
+[then]
+
+\ finding chars
+
+: len++ ( $ -- ) \ increment the count byte of $ by 1
+        dup c@ 1+ dup max$len > abort" len++ exceeded 255 bytes"
+        swap c! ;
+
+: len+! ( $ n -- ) \ increment the count byte of $ by 'n'
+        0 do
+            dup len++
+          loop
+          drop ;
+
+8 value xwidth   \ # chars to expand by
+
+: expand-tab ( $1 char -- $2) \ create a string with all char expanded to spaces
+        swap push$
+        count bounds
+        new.top$ DROP
+        DO
+           dup I C@ <>
+           IF
+              i c@ top$ dup len ]$ C!    \ used length as index to place the char
+              top$ len++                       \ incr. length
+           else
+              top$ dup len ]$ xwidth bl fill    \ used length as index to place the spaces
+              top$ xwidth len+!
+           THEN
+        LOOP
+        drop
+        top$ ;
+
+
+: Replace-Char$   ( str char char_2 -- top$ )
+        rot
+        push$ count bounds
+        DO
+            over I C@ =
+            IF
+                dup I C!
+            then
+        LOOP
+        2DROP
+        top$ ;
+
+bl value stripchar           \ value holds the character to remove from some words
+
+: >stripchar    to stripchar ;
+
+\ Primitive
+: stripc ( $1 char -- )    \ stRip $1 in place ** DOES NOT CREATE A NEW STRING **
+        ( char) to stripchar
+        dup count bounds ( $1 adr1 adr2)
+        new.top$ drop                    \ dynamically create a new top$ , but we don't need the address
+        DO
+           I C@ stripchar <>
+           IF                            \ build a new string char by char
+              I c@ top$ $+c!             \ append a char to string.
+           THEN
+        LOOP
+        top$ swap ($!)                 \ copy the new string into $1  and leave a copy on the stack
+        -256 ssp +!  ;                 \ drop the top of the string stack.
+
+: ]sub$  ( $ start end -- $ )    \ equivalent to Python  STRING[n:n2]
+        over -                  \ calc the number of characters
+        ( $ start #char) mid$ ;
+
+: left-strip ( adr$ -- n) \ finds the last leading stripchar
+        0                     \ flag place holder on the stack
+        swap
+        count 0
+        do
+           dup i + c@ stripchar <>
+           if
+              drop drop
+              i leave
+           then
+        loop ;
+
+: lstrip$ ( adr$ char-- adr$ )    \ remove ALL leading 'char'
+        to stripchar
+        dup len over left-strip - right$ ;
+
+: right-strip ( adr$  -- n) \ finds the last trailing stripchar
+        0                     \ flag place holder on the stack
+        swap
+        count 1- 0 swap
+        do
+           dup i + c@ stripchar <>
+           if
+              drop drop
+              i leave
+           then
+      -1 +loop
+       1+ ;
+
+: rstrip$ ( adr$ char-- adr$ )    \ remove ALL trailing 'char'
+        to stripchar
+        dup right-strip left$ ;
+
+: strip$ ( $ char -- $ ) \ removing trailing and leading stripchars
+        lstrip$  stripchar rstrip$ ;
+  
+
+
+: reverse$ ( $1 -- $2)             \ create $2 reverse of S1
+        new.top$ drop
+        count 1- bounds
+        swap                        \ need to index backwards through the string
+        do
+           i c@  top$ $+c!
+        -1 +loop
+        top$ ;
+
+: remove$ ( $1 $chars-- $2 )       \ remove all chars in $chars from $1
+        Swap >top$                      \ push $1 onto string stack
+
+        dup len 0    \ for every char in the $chars ...
+        do
+          Top$ over i ]$ c@ ( $ c ) stripc
+        1 /loop
+        drop
+        Top$ ;
+
+\ usage:   : no_vowels    input$ $" aeiou" remove$ ;
+
+
+: L/$ ( $ c -- $1)    \ 'DIVIDE string' divides '$' at the position of character 'c' and leave the left remainder string
+        over cmember? left$ ;
+
+: R/$  ( $ c -- $2 )  \ 'DIVIDE string' divides '$' at the position of character 'c' and leave the RIGHT remainder string
+        over cmember? over len swap - right$ ;
+
+\ 'DIVIDE string' divides '$' at the position of character 'c' and leave the left remainder string AND the right remainder string
+: split$   ( $ c --  $ $remainder)
+        2dup   R/$ >r   l/$ r> ;
+
+0 value splitchar
+
+: splitall$ ( $ c -- $1 .. $n  n )
+        dup to splitchar
+        begin
+             2dup $POS 0>
+        while
+             split$ splitchar ( $ c )
+        repeat ;
+
+: toupper! ( adr -- )   \ convert the CHAR at adr to upper case, in place.
+          dup c@ toupper ( adr c ) swap c! ;
+          
+
+: title$ ( $ -- $1)              \ Turn a copy of $ into a Title, where All first letters are uppercase
+          push$
+          dup 0 ]$ toupper!    \ first letter is Caps
+          count bounds
+          do
+             I c@ BL =
+             if
+               I 1+  toupper!
+             then
+          1 /loop
+         top$ ;
+
+: zfill$ ;
+
+DECIMAL
+
+\ exit
+
+\ end code
+
+
+\ DEMO CODE
+
+
+0 [IF]
+
+*** Python functions not coded in Forth ****
+
+decode( [encoding[, errors]])
+        Decodes the string using the codec registered for encoding. encoding
+        defaults to the default string encoding. errors may be given to set a
+        different error handling scheme. The default is 'strict', meaning that
+        encoding errors raise UnicodeError. Other possible values are 'ignore',
+        'replace' and any other name registered via codecs.register_error.
+        New in version 2.2. Changed in version 2.3: Support for other error
+        handling schemes added.
+
+encode( [encoding[,errors]])
+        Return an encoded version of the string. Default encoding is the current
+        default string encoding. errors may be given to set a different error
+        handling scheme. The default for errors is 'strict', meaning that
+        encoding errors raise a UnicodeError. Other possible values are
+        'ignore', 'replace', 'xmlcharrefreplace', 'backslashreplace' and any
+        other name registered via codecs.register_error. For a list of possible
+        encodings, see section 4.9.2. New in version 2.0. Changed in version
+        2.3: Support for 'xmlcharrefreplace' and 'backslashreplace' and other
+        error handling schemes added.
+        translate( table[, deletechars])
+        Return a copy of the string where all characters occurring in the
+        optional argument deletechars are removed, and the remaining characters
+        have been mapped through the given translation table, which must be a
+        string of length 256. For Unicode objects, the translate() method does
+        not accept the optional deletechars argument. Instead, it returns a copy
+        of the s where all characters have been mapped through the given
+        translation table which must be a mapping of Unicode ordinals to Unicode
+        ordinals, Unicode strings or None. Unmapped characters are left
+        untouched. Characters mapped to None are deleted. Note, a more flexible
+        approach is to create a custom character mapping codec using the codecs
+        module (see encodings.cp1251 for an example).
+[then]
+

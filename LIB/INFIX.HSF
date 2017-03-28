@@ -1,0 +1,89 @@
+\    Compile infix expressions
+\    Copyright (C) 2002 Red Hat, Inc
+\
+\ This program is free software; you can redistribute it and/or modify
+\ it under the terms of the GNU General Public License as published by
+\ the Free Software Foundation; either version 2, or (at your option)
+\ any later version.
+\
+\ It is distributed in the hope that it will be useful, but WITHOUT ANY
+\ WARRANTY; without even the implied warranty of MERCHANTABILITY or
+\ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+\ <http://www.gnu.org/licenses/gp l.txt> for more details.
+
+\ Some support words.
+
+variable t           \ The current token
+variable =number     \ unless it's a number, in which case the number is here
+
+\ "token" fetches a new token from the input stream, and "match"
+\ matches against the current token.  As soon as a match succeeds
+\ you'll want to fetch a new token, except when the current token
+\ matches the end of an expression.  It is possible to fetch tokens
+\ automatically once a match succeeds and this results in a shorter
+\ parser, but IMO it's clearer to do it explicitly.
+
+: token   bl word find 
+          if  t !
+          else  =number t !  
+                number drop  =number !  
+          then ;
+
+: this ( - a)   t @ ;
+: =t ( a - t)   this = ; \ True if a matches the current token
+: match# ( - t)   =number =t ;
+: match   ' postpone literal  postpone =t ; immediate
+
+\ Create a table of tokens and actions.  At runtime, if a1 is in the
+\ table of tokens return the action associated with a1 and true;
+\ otherwise return false.  
+\ FIXME: This table lookup mechanism is adequate for a demonstration,
+\ but a better way to do this may be a custom wordlist.
+: ops[   create  begin  '  dup ['] ] - while  ,  repeat  drop 0 ,
+   does> ( a1 - a2 t | 0)
+   begin  dup @  =t if  cell+ @ 1 exit  then
+     2 cells +  dup @ 0= until  drop 0 ;
+
+: op ( a)   state @ if  compile,  else execute  then ;
+: lit   =number @  state @ if  postpone literal  then ;
+
+\ A parser for a simple language.
+
+\ These are the operators.  They're arranged in pairs, so that the \
+\ first is the token that is used in the syntax, and the second is the
+\ word that is executed at run time.  They're usually the same -- the
+\ only exception here is unary -.
+
+ops[ relop   > > < < = = ]
+ops[ addop   + + - - or or xor xor ]
+ops[ mulop   * * / / and and ]
+ops[ unop   - negate @ @ ]
+
+\ These are the productions.
+
+defer expr
+: expr-list   expr  begin  match ,  while  token expr  repeat ;
+
+: parens  expr-list  match ) 0= abort" )" ;
+
+: primary
+   match# if  lit  token  exit  then
+   match ( if  token parens  token  exit  then
+   this >r  token  match ( if  token  parens  token  then  r> op ;  ( )
+
+: factor   unop if  >r  token  recurse  r> op  exit  then  primary ;
+
+: term   factor  
+   begin  mulop while  >r  token  factor  r> op  repeat ;
+
+: simple-expr   term  
+   begin  addop while  >r  token  term  r> op  repeat ;
+
+          simple-expr
+          begin  relop while  >r  token  simple-expr  r> op  repeat ;
+' <expr> is expr
+
+\ Parse an expression.  This may be used either in compile or
+\ interpret state.
+: exp   token  match ( 0= abort" ("  token parens ; immediate
+

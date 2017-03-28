@@ -1,0 +1,21 @@
+\ INT10  extracted from Hs/Forth Metacompiler
+
+code INT10      \ INT10 is a variation on INTCALL limited to interrupt 10, video.
+       <% 2E 881D 5A595B58 5655CD105D5E 93 %>
+       next.
+end-code
+
+code Int10
+          CS:
+          [DI],BL mov.
+          DX pop.
+          CX pop.
+          BX pop.
+          AX pop.
+          SI push.
+          BP push.
+          10 int.
+          BP pop.
+          SI pop.
+          NEXT.
+END-CODE

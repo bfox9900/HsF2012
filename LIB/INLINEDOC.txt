@@ -1,0 +1,319 @@
+\ inline.hsf  a simple speedup for primitives    April 20 1008  Brian Fox
+
+0 [if]
+*******************************************************************************
+HSF2000 now has inline code capability.  
+This feature allows us to build faster primitives without resorting to assembler
+because the code already exists inside HSF2000.  With Inline:  we can connect
+the code snippets of the systems primitives together so that they execute back
+to back without jumping through the Forth 'NEXT' routine.
+
+One of the advantages of HSF2000's architecture with the inline: method is that
+HSF2000 caches the Forth Top of stack in the BX register. A benficial side
+effect of this is that when we inline the code there are far less needless code
+segments than in a non-cache Forth system.  In conventional Forth's there is a
+larger chance to see code that does:
+
+        push BX
+        pop  BX
+
+.. in between the code primitives.
+
+
+Example #1  of how inline: works and the resulting code
+-------------------------------------------------------
+
+Let's take the classic example of the word BOUNDS which is used to configure a
+do loop that needs to scan through memory.
+This is normal hi-level Forth code:
+
+: bounds   ( adr n --  adr2 adr1 )   over + swap ;
+
+Using the inline: coding method it becomes:
+
+CODE bounds
+        inline: over
+        inline: +
+        inline: swap
+        next
+end-code
+
+What happens when this executes is that the word inline: finds the code for each
+ word in the list in the CODES segment and copies the code, byte by byte into
+ the new location starting at the code address of the new word 'bounds'.
+The difference is that the Forth Next routine is NOT copied between each piece
+of code.  How much difference does that make?
+
+Here is what executes in hi-level Forth:
+
+: bounds
+        pop AX          ; over
+        push bx
+        mov bx ax
+        lodsw           ; next
+        lea AX
+        jmp AX
+        pop AX          ; +
+        add bx ax
+        lodsw           ; next
+        lea AX
+        jmp AX
+        pop AX          ; swap
+        push bx
+        mov bx ax
+        lodsw           ;next
+        lea AX
+        jmp AX
+;
+(17 instructions,  8 running code,  9 are NEXT routines)
+
+Simply using our inline: directive creates execution code like this:
+
+Code bounds
+        pop AX          ; over
+        push bx
+        mov bx ax
+        pop AX          ; +
+        add bx ax
+        pop AX          ; swap
+        push bx
+        mov bx ax
+        lodsw           ; NEXT
+        lea AX
+        jmp AX
+end-code
+
+( 11 instructions, 8 running code, 3 for the NEXT routine. )
+
+
+It is only fair to mention however that a hand coded version of "bounds" is
+still faster.
+
+
+\ Hand-code version of  : bounds   over + swap ;
+code bounds
+        ax pop.         \ POP the limit
+        bx ax add.      \ add to the index
+        bx push.        \ push the limit
+        bx ax mov.      \ put new index in BX
+        next.
+end-code
+( only 4 instructions! and then next.
+
+ Example #2
+----------------
+Two sequences of primitives in the routine -LEADING below are perfect for
+optimizing with inline.  Because the number primtives is the sequences are
+numerous removing the overhead of NEXT really increases the speed of the loop.
+In the test code below, we measured a 4X speed increase!
+
+Original code
+--------------
+
+\ -leading  Like -TRAILING, removes leading blanks Albert Van der Horst
+: -LEADING ( $adr cnt --  $adr cnt   )
+    BEGIN
+      over c@ bl = over 0= 0= and
+    WHILE
+      1- SWAP 1+ SWAP
+     REPEAT ;
+
+
+CODE findspace? ( adr$ cnt -- ? )
+        inline: OVER
+        inline: C@
+        lit: 32
+        inline: =
+        inline: OVER
+        inline: 0=
+        inline: 0=
+        inline: AND
+        next.
+end-code
+
+code 1-swap1+swap
+        inline: 1-
+        inline: swap
+        inline: 1+
+        inline: swap
+        next.
+end-code
+
+\ -leading  Like -TRAILING, removes leading blanks Albert Van der Horst
+ : -LEADING ( $adr cnt --  $adr cnt   )
+    BEGIN
+       findspace?       \ Original code:  over c@ bl = over 0= 0=  and
+    WHILE
+       1-swap1+swap     \ Original code:  1- SWAP 1+ SWAP
+     REPEAT ;
+
+
+You can see why it's faster from the resulting code. There 52 instruction in
+the Forth execution because NEXT has to run 8 times. There 31 instruction in the
+inlined version, and they are faster instructions, because we used compound
+primitives that are available in HSF2000 but were not in the original code from
+Albert Van Der Horst.  ( We changed "1 -" to "1-" and  "1 +"  to "1+" )
+
+
+Here is what runs as Forth hi level code:
+
+: findspace?       
+        POP     AX              ; OVER
+        PUSH    AX
+        XCHG    BX,AX
+        LODSW                  ; next
+        XCHG    DI,AX
+        JMP     [DI]
+        PUSH    AX             ; C@
+        MOV     BL,[BX]
+        SUB     BH,BH
+        LODSW                  ;next
+        XCHG    DI,AX
+        JMP     [DI]
+        PUSH    BX             ; BL (a constant pushed onto stack)
+        MOV     BX,0032
+        LODSW                  ;next
+        XCHG    DI,AX
+        JMP     [DI]
+        POP     AX             ; =
+        SUB     BX,AX
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0001
+        DEC     BX
+0001:   LODSW                  ; next
+        XCHG    DI,AX
+        JMP     [DI]
+        POP     AX             ; OVER
+        PUSH    AX
+        XCHG    BX,AX
+        LODSW                   ;next
+        XCHG    DI,AX
+        JMP     [DI]
+        PUSH    AX              ; 0=
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0002
+        DEC     BX
+0002:   LODSW                   ; next
+        XCHG    DI,AX
+        JMP     [DI]
+        PUSH    AX              ; 0=
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0003
+        DEC     BX
+0003:   LODSW                   ;next
+        XCHG    DI,AX
+        JMP     [DI]
+        POP     AX              ; AND
+        AND     BX,AX
+        LODSW                   ;next
+        XCHG    DI,AX
+        JMP     [DI]
+;
+
+
+\ this is the inline version.
+CODE findspace?
+        POP     AX              ; OVER
+        PUSH    AX
+        XCHG    BX,AX
+        PUSH    AX             ; C@
+        MOV     BL,[BX]
+        SUB     BH,BH
+        PUSH    BX             ; BL (a constant pushed onto stack)
+        MOV     BX,0032
+        POP     AX             ; =
+        SUB     BX,AX
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0001
+        DEC     BX
+0001:   POP     AX             ; OVER
+        PUSH    AX
+        XCHG    BX,AX
+        PUSH    AX              ; 0=
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0002
+        DEC     BX
+0002:   PUSH    AX              ; 0=
+        OR      BX,BX
+        MOV     BX,0000
+        JNZ     0003
+        DEC     BX
+0003:   POP     AX              ; AND
+        AND     BX,AX
+        LODSW
+        XCHG    DI,AX
+        JMP     [DI]
+END-CODE
+
+true [if]
+
+
+
+\ 100 spaces are in this string
+200 $variable q
+
+q :="                                                                                                     ABC"
+
+\ 16 seconds without inline:  version of -leading
+\ 4.4 seconds with inline: version of -leading !!!!!!
+: test
+        1000 0
+        do
+            1000 0
+               do q push$ count -leading 2drop clrssp
+            loop
+        loop ;
+
+
+
+[then]
+
+
+
+Other examples are below
+
+\ sum 4 numbers faster (un-roll a loop)
+code  +++   ( n n n n -- sum )
+        inline: +
+        inline: +
+        inline: +
+        next.
+end-code
+
+
+\ increment n on the stack faster
+decimal
+code 10+ ( n -- n+10 )
+     lit: 10
+     inline: +
+     next.
+end-code
+
+\ read a variable faster
+code scr@ ( -- n )
+     scr :parm
+     inline: @
+     next.
+end-code
+
+hex
+
+\ mask the contents of a variable.  MASKF is 1/2 speed of MASKI
+
+: maskf   dup @  00ff and  swap ! ;
+
+code maski ( var -- )
+        inline: dup
+        inline: @
+        lit: 00FF
+        inline: and
+        inline: swap
+        inline: !
+        next.
+end-code
+

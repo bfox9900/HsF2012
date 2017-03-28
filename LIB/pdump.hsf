@@ -1,0 +1,11 @@
+\ PDUMP.HSF  tool to check i/o ports.  23FEB95 FOX
+
+: PDUMP  ( adr n -- )
+        CR
+        OVER + SWAP
+        DO   I  P@  2 .R   SPACE  OUT @ 48 / IF CR THEN  LOOP ;
+
+
+
+
+

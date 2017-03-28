@@ -1,0 +1,35 @@
+\ PACKCODE       26MAR91  FOX
+\ This is the secret method that allows you to remove the un-needed parts
+\ of the CODES segment!  It only took me 3 years to discover it in the
+\ manual! @#$%$#%^#
+
+\ To use it make sure that there is enough room above the last code segment
+\ definition and before the next HS/FORTH segment to contain ALL of the
+\ CODE definitions. Then execute "PACK-CODES" .
+
+\ FIND TURNKEY 0= ?( FLOAD \HSF\SEAL )
+
+: PACK-CODES ( -- )
+        CODES 4I@                               \ get the end of codes
+        CODES 2I!                               \ make it the SIZE for codes
+        CODES D@ 4SLR 1+ + MEMORY 4I! ;         \ reset the memory pointer
+
+
+\ Example in HSF Text:
+: .MEM     .MEMORY CR ." ------------" ;
+
+: SizeofSeg  4I@ 1+ ;
+HEX   WIPE
+
+200 NEW-STACK                  .MEM
+LISTS SizeofSeg 200 + NEW-LIST       .MEM
+BUFFER SizeofSeg   BUFFER MOVE-SEG  .MEM
+FORTHS SizeofSeg      NEW-VOC        .MEM
+
+PACK-CODES                          CR  ." Codes are packed ..." .MEM
+
+LISTS SizeofSeg 200 + NEW-LIST      CR ." making new LISTS"
+                200   NEW-STACK     CR ." making new stack"
+BUFFER SizeofSeg   BUFFER MOVE-SEG  CR ." moving data segment"
+                                     CR ." READY to TURNKEY"
+

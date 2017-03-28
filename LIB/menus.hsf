@@ -1,0 +1,128 @@
+\ MENUS.FOX   pull down menus for HS/FORTH    21MAR92 FOX
+DECIMAL
+
+[UNDEFINED] WPUSH       [IF] INCLUDE WSTACKS.hsf [THEN]
+[UNDEFINED] DEFER       [IF] INCLUDE VECTORS.hsf [THEN]
+[UNDEFINED] INIT-MOUSE  [IF] INCLUDE MOUSE.HSF   [THEN]
+[UNDEFINED] HI-LITE     [IF] INCLUDE HILITE.HSF  [THEN]
+\ [UNDEFINED] FTYPE       [IF] INCLUDE FTYPE.HSF   [THEN]
+[UNDEFINED] DROP-SHADOW [IF] INCLUDE BORDERS.HSF [THEN]
+
+: MenuCOL  ( -- n ) MOUSE-ROW,COL PLUCK WLC - ;     \ current menu column
+: MenuROW  ( -- n ) MOUSE-ROW,COL DROP  WUR - ;     \ item to hilight in column
+
+0 CONSTANT Button1
+
+0 VAR MENUKEY
+
+: NOOP  -1 IS MENUKEY ;                 \ -1 means do nothing
+
+DEFER DOOTHER   ' DROP TO DOOTHER    \ THROW AWAY ANY KEY WE DON'T WANT
+                                        \ for now at least.
+
+DEFER MBUTTON                             \ MENU BUTTON FUNCTION
+
+                                        \ n1 = number of menu entries
+                                        \ a1 = address to be filled by ENDMENU
+                                        \ n2 = running total of menu length
+
+: MENU:    ( name --- a1 n2 )           \ creates "name" the menu name
+                CREATE
+                45                      \ number to check for in ENDMENU
+                HERE 0 C, 0 ;           \ build start of menu string list
+
+                                        \ a1 = address to be filled by ENDMENU
+                                        \ n1 = running total of menu length
+: MENUBAR: ( name --- a1 n1 )      \ make a new menubar of "name"
+                CREATE
+                45
+                HERE 0 C, 0 ;
+
+: ENDMENU       ( a1 n1 --- )
+                SWAP C! 45 ?PAIRS ;
+
+: +,"           ( n1 | string --- n1+1 )
+                1+ ,"  ;                \ lay in string
+
+                                        \ a1 = address of count of strings
+                                        \ n1 = current running total of lines
+                                        \ string" = menu text line to display
+                                        \ function = functio name for line
+                                        \ n1+1 = resulting running total
+                                        \ compile a new menu line
+
+: MENULINE"     ( a1 n1 | string" function --- n1+1 )
+                +,"                     \ lay in string
+                [COMPILE] ['] HERE !   \ lay function in LIST space
+                ENDL 2+! OKLW ;         \ bump LIST space
+
+: MenuWidth ( -- n)   WRC WLC - 1+ ;
+
+: SetMenuItem ( n -- )
+                 MENUKEY 0 WCURSOR!    WATRS MenuWidth HILITE    \ reset line
+                 DUP     0 WCURSOR! REV-WATRS MenuWidth HILITE
+                 ( MenuROW) IS MENUKEY  ;
+
+: .HORIZMENU    ( A1 --- )              \ DISPLAY A HORIZONTAL MENU
+                C-OFF WIPE
+                COUNT 0
+                DO
+                   DUP COUNT FTYPE  WCURSOR@ 10 + WCURSOR!
+                   COUNT + 2+
+                LOOP
+                DROP  ;
+
+: .VERTMENU     ( a1 --- )              \ display a vertical menu
+                C-OFF WIPE
+                COUNT 0
+                DO
+                   DUP COUNT FTYPE CR
+                   COUNT + 2+
+                LOOP
+                DROP ;
+
+: Do_Menu_Item ( menudescr. -- )
+        MENUKEY -1 =               \ -1 is set by the NOOP word.
+        IF
+           DROP
+        ELSE
+          COUNT
+          MENUKEY 1+ MIN  0
+          DO
+              COUNT + 2+
+          LOOP
+          2- @ EXECUTE            \ POP item count to limit selection.
+        THEN ;
+\ ******************************************************************
+\    This border type creates a drop shadow style window with an
+\    OFF button. It does not work yet.
+
+  Single_Drop_Shadow  LTGRAY BLACK FG&BG  BORDER" MenuBorder [þ]"
+
+\ ******************************************************************
+: Wait_Selection
+       BEGIN
+            MenuROW MENUKEY <>
+            IF
+                MenuROW SetMenuItem
+            THEN
+            Button1 GET_BUTTON_RELEASE PLUCK PLUCK PLUCK
+       UNTIL ;
+
+: Wait_Release  BEGIN  GET_BUTTON_RELEASE UNTIL ;
+
+: DO-VERT-MENU ( menu-descr, window-descr. -- )
+       WPUSH
+        >W MenuBorder               \ enter MENU window and execute border
+\      THE W# MOUSE-TRAP            \ trap the mouse
+       DUP .VERTMENU                \ need a copy for DoMenuItem
+\      HIDE_CURSOR                  \ we don't need to see the mouse now
+       -1 IS MENUKEY                \ reset the menu selection VAR
+\      0 0 MOUSE-XY!                \ home the mouse cursor
+       MENUKEY SetMenuItem          \ hilite the selected menu item
+       Wait_Selection
+       Do_Menu_Item
+       WPOP ;
+
+EXIT
+

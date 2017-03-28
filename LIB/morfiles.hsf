@@ -1,0 +1,7 @@
+\ FILES.DOS      extra stuff that that DOS can do to files  21mar91 FOX
+HEX
+\ flush DOS buffers & restore all read pointers
+: DISK-RESET  ( -- )  0 0D00 SYSF DROP ;
+
+: CURRENT-DISK ( -- drive# ) 0 1900 SYSF ;
+

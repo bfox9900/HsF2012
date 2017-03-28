@@ -1,0 +1,175 @@
+\ HSTIMER.FOX  taken from article JAN87 Byte mag. by Byron Sheppard
+
+\ This file implements the word 'MS' for ANS Forth compatiblity
+\ It looks much more complicated than it is.
+
+\ \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\ Explanation
+\ The IBM has one timer which is easily accessible through software
+\ - the so-called 'time-of-day' clock. Unfortunately, in standard operation
+\ this timer is only updated every 55 msec, a temporal resolution which is
+\ unsuitable for most reaction time paradigms. Since the PC's introduction,
+\ a number of ingenious techniques have been used to improve timing routines.
+\ Unfortunately many of these algorithms can have serious side-effects on the
+\ performance of the computer's date setting, peripheral devices and speed of
+\ the computer (see Graves & Bradley, 1991 for a review).
+
+\ For my experiments, I used an algorithm reported by Byron Sheppard
+\ ( Byte Magazine Jan 1987) which avoids these problems. Essentially, the
+\ algorithm sets the timer to operate in a countdown, rather than square-wave
+\ mode of operation. While the programmer can read the timer chip directly
+\ (which is updated more than 18 times each msec), the standard system
+\ timing interrupt signal is only given at each clock upbeat, which occurs at the
+\ same 55 msec interval as in normal operation, and therefore the computer's time,
+\ date and overall system performance are unaffected.
+\ \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+\ June 13 2015:  simplified the timercal word.  Not sure what I was thinking.
+\                 factored our >uS conversion word into it's own word.
+
+[UNDEFINED] MOV.  [IF] INCLUDE 8088ASM.HSF [THEN]
+
+hex
+\ 8253 timer chip port addresses for ibm pc
+0040 constant timer0
+0043 constant ctrlport
+
+\ bit patterns to change timer mode
+0034 constant mode2            \ sets timer to mode 2
+0036 constant mode3
+
+decimal
+\ The timer chip is fed with a 1.19318 MHZ clock
+8381 constant count_convert     \ constant to convert ticks (.8381 us) to real micro-seconds (actual value is 0.8380965151946898)
+   8 value    overhead          \ the computers overhead to read the timer (roughed in for a start value)
+
+\ reset the high speed timer to 0
+code hst_rst
+       al mode2 ib mov.        \ load al reg. to mode 2, write mode
+       ctrlport al out.        \ load the timer mode register
+
+       ax ax sub.              \ clear al
+       timer0 al out.          \ load 0 into lsb
+       timer0 al out.          \ load 0 into msb
+       bx pop.
+end-code
+
+
+code  timer[0] ( -- n ) \ n is in ticks. 1 tick=838 nano seconds
+       bx push.                \ hsforth keeps tos in bx
+       al 0 ib mov.            \ clear al
+       cli.                    \ stop interrupts
+       ctrlport al out.        \ 0 to ctrl port latches the timer output
+
+       al timer0 in.           \ read the lsb into al
+       bl al mov.              \ move to bl
+       al timer0 in.           \ read msb into al
+       bh al mov.              \ move to bh. now have a 16bit number
+       sti.                    \ ok for interrupts now
+       bx    not.              \ invert bx for ascending count
+       next.
+end-code
+
+
+decimal
+
+\ this word measures the time to READ the timer in forth
+\ it then puts the result in the var called overhead which can be used
+\ to compensate for runtime. in the word >uS  ( to micro-seconds)
+
+\ This is magic math that I developed by trial and error  ***RETIRED***
+\ : timercal  ( -- )  hst_rst yield timer[0] DUP 2/ + 1- to overhead ;
+
+0 value ticks/ms
+0 value <1ms>
+
+: timercal    ( --)                                   \ avg 4 samples
+              0                                       \ accumulator
+              4 0 do
+                  timer[0] yield timer[0] swap -  ABS +
+              loop
+              ( n ) 4 / 0 + to overhead                \  store the average overhead (9 is a fudge factor)
+                                                       \ calculate the number of ticks in one milli-second
+
+              1193180.  1000 mu/  d>s TO ticks/ms      \ clock = 1.19318MHz / 1000 = 1193
+              ticks/ms overhead -  TO <1ms>            \ compensate for multi-tasking overhead
+              ;
+
+timercal
+
+
+
+
+\ compensate for multi-tasking overhead
+ticks/ms overhead - value <1ms>
+
+: ms++  ticks/ms + to ticks/ms
+        ticks/ms overhead - to <1ms> ;
+
+
+
+\ this word will delay 1ms.  Changed to yield for the multi-tasker. It was way to slow the other way
+: 1ms
+        timer[0]
+        begin
+           yield
+           timer[0] over -
+           <1ms> >=
+        until
+        drop ;
+
+\ faster than a do loop
+: ms    ( n -- )
+        1 max  1+  
+        begin  1- DUP  while
+           1ms
+        repeat
+        DROP ;
+
+
+: SECONDS ( n -- ) \ this word may run long due to Windows IDLE
+        1 max
+        0 do
+             idle               \ give windows a chance to run
+             990 ms             \ rough compensation for idle
+          loop ;
+
+: >uS   ( ticks -- uS)  overhead -  count_convert 10000 */ ;
+
+
+\ hi-level commands to set the timer
+: timer_mode! ( c -- )  \ select timer mode 2, read/write channel 0
+    ( c) ctrlport pc!                \  send the mode (c) to the ctrl port
+     0   timer0 pc!                  \  clear timer low byte
+     0   timer0 pc!  ;               \  clear timer high byte
+
+: dostimer      mode3 timer_mode! ;   \ restore things to normal
+
+: hstimer       mode2 timer_mode!  ;  \ use the high speed timer.
+
+: tick        ( -- ticks)  timer[0] ;
+
+: tock        ( --  elapsed_uS)   timer[0] swap -  >uS ;     \ maximum elapsed time is 65536 uS, 6.5 mS
+
+\ usage:   tick   word word ... word  tock ( uS)
+
+
+exit
+
+
+\ old code **********************************************************
+
+8381 constant count_convert
+     variable overhead         \ contains the overhead to read the timer
+
+
+: hscal   \ read the timer onto the stack
+          timer_set
+          timer[0] timer[0] -
+          timer[0] timer[0] -
+          +
+          2/ abs overhead ! ;
+
+ : uS@  ( -- n )   TIMER[0] OVERHEAD @  -  count_convert 10000 */ ;
+
+

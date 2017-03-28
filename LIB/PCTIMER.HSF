@@ -1,0 +1,17 @@
+ \ PC timer primitive  used to create Forth MS word
+
+TARGET-ASSEMBLING
+
+code:  timer@ ( -- n ) \ n is in ticks. 1 tick=838 nano seconds
+       bx push.                \ hsforth keeps tos in bx
+       AX AX XOR.              \ clear al
+       cli.                    \ stop interrupts
+       43 al out.              \ 0 to ctrl port ($43) latches the timer output
+       al 40 in.               \ read the lsb into al from timer port ($40)
+       bl al mov.              \ move to bl
+       al 40 in.               \ read msb into al
+       bh al mov.              \ move to bh. now have a 16bit number
+       sti.                    \ ok for interrupts now
+       bx    not.              \ invert bx for ascending count
+       next.
+end-code

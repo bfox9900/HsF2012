@@ -1,0 +1,191 @@
+\ ===================================================================
+\      Program: Bits.4th
+\       Author: Timothy Trussell
+\         Date: 04-29-2005
+\  Description: Bit level access of byte/word/dword data
+\ ===================================================================
+\      Changes: 05/11/2006
+\               Added some 32-bit manipulations
+\
+\             : 11/23/2006
+\               Revamped the encoding/decoding scheme, reducing the
+\               size of the package by eliminating all the constant
+\               definitions, and streamlining the functionality by
+\               implementing the "1 bit# LSHIFT" construct
+\
+\               Eliminated use of the EDO package for structures.
+\
+\               I have tried to keep this package generic, but the
+\               use of the 32Forth word LSHIFT may change this.
+\               If so, then the LSHIFT word will need to be coded in
+\               the version of Forth the programmer is attempting to
+\               load this module into.
+\ ===================================================================
+
+exists [BITS] not [if]          \ don't reload if already present
+
+: [BITS] ;
+
+\ ---[ Functions ]---------------------------------------------------
+\              Description of the words in this module
+\ -------------------------------------------------------------------
+
+\ ZeroBits    ( -- )        zeros the Bits[] array
+\ Parse8Bits  ( c -- )      Parse /c/ to the Bits[] array
+\ Parse16Bits ( n -- )      Parse /n/ to the Bits[] array
+\ Parse32Bits ( d -- )      Parse /d/ to the Bits[] array
+\ BuildByte   ( -- c )      Build /c/ from the Bits[] array
+\ BuildWord   ( -- n )      Build /n/ from the Bits[] array
+\ BuildDWord  ( -- d )      Build /d/ from the Bits[] array
+\ ?BitTest    ( c/n/d -- )  Displays c/n/d as dec/hex/binary data
+
+\ "Bits[] 32 DUMP" displays the current data in the Bits[] array,
+\ ordered as the programmer normally views this information
+\ (bits 31..16 on the first line, and bits 15..0 on the second)
+\
+\ If that is unclear, here is a pseudo-dump of a typical structure
+\ with the corresponding bit locations filled in:
+\   +---------------------------------------------------------+
+\   | Bits[] 32 dump                                          |
+\   |   19C35 1F 1E 1D 1C 1B 1A 19 18 17 16 15 14 13 12 11 10 |
+\   |   19C45 0F 0E 0D 0C 0B 0A 09 08 07 06 05 04 03 02 01 00 |<-Bit0
+\   | ok                                                      |
+\   +---------------------------------------------------------+
+\ I have ordered the data to reflect how we are taught to view the
+\ bit patterns of binary data - from right to left.  Therefore,
+\ Bit 31 ($1F) is at memory location 19C35h, with the bit numbers
+\ decreasing until we have Bit 0 at memory location 19C54h
+\
+\ The array values will always be either a 0 or 1.  If during use
+\ you ever see a larger value present, it means that some other word
+\ in your program has corrupted the data in your dictionary.
+\
+\ [-1 parse32bits] ($FFFFFFFF) looks like:
+\   +---------------------------------------------------------+
+\   | Bits[] 32 dump                                          |
+\   |   19C35 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 |
+\   |   19C45 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 |<-Bit0
+\   | ok                                                      |
+\   +---------------------------------------------------------+
+\ [65535 parse16bits] ($FFFF) looks like:
+\   +---------------------------------------------------------+
+\   | Bits[] 32 dump                                          |
+\   |   19C35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |
+\   |   19C45 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 |<-Bit0
+\   | ok                                                      |
+\   +---------------------------------------------------------+
+\ and [255 parse8bits] ($FF) looks like:
+\   +---------------------------------------------------------+
+\   | Bits[] 32 dump                                          |
+\   |   19C35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |
+\   |   19C45 00 00 00 00 00 00 00 00 01 01 01 01 01 01 01 01 |<-Bit0
+\   | ok                                                      |
+\   +---------------------------------------------------------+
+\ -------------------------------------------------------------------
+
+base @
+decimal                         \ set base to decimal
+
+\ ---[ Create the Bit Access array ]---------------------------------
+\ Allocates the bit array structure in memory
+
+create Bits[] here 32 dup allot 0 fill
+
+\ ---[ Zero the bits array ]-----------------------------------------
+
+: ZeroBits ( -- ) Bits[] 32 0 fill ;
+
+\ ---[ Parse Bits ]--------------------------------------------------
+\ Break c/n/d down into individual elements in the Bits[] array
+\ c/n/d is a value that could be 8, 16 or 32 bits
+
+: (IsBit?) ( c/n/d bitpattern -- 0/1 ) and if 1 else 0 then ;
+
+: (ParseBits) ( n #bits -- )
+  ZeroBits                      \ to eliminate contamination of data
+  0 do                          \ n
+    dup                         \ n n
+    1 i LSHIFT (IsBit?)         \ n 0/1         Note: 1 0 LSHIFT = 1
+    Bits[] 31 i - + C!          \ n             (doesn't shift 1)
+  loop                          \ n
+  drop                          \ --
+;
+
+: Parse8Bits  ( c -- )  8 (ParseBits) ;
+: Parse16Bits ( n -- ) 16 (ParseBits) ;
+: Parse32Bits ( d -- ) 32 (ParseBits) ;
+
+\ ---[ Build ]-------------------------------------------------------
+\ Combines the data in the Bits[] array into a byte, word or dword
+
+: (CombineBits) ( #bits -- c/n/d )
+  0                             \ #bits 0               seed value
+  swap 0 do                     \ 0
+    Bits[] 31 i - + C@
+    if 1 i LSHIFT or then       \ c^bit
+  loop
+;
+
+: BuildByte  ( -- c )  8 (CombineBits) ;
+: BuildWord  ( -- n ) 16 (CombineBits) ;
+: BuildDWord ( -- d ) 32 (CombineBits) ;
+
+\ ---[ ?BitTest ]----------------------------------------------------
+\ Displays a bit pattern of the byte/word/dword passed on the stack
+\ This word is meant for interactive testing from the keyboard during
+\ program development.
+\ This word does not use any of the above bitwords.
+\ -------------------------------------------------------------------
+\ It scales the number of bits displayed to the value of the number.
+\ If c/n/d < 256 only 8 bits are displayed.
+\ If c/n/d < 65536, 16 bits are displayed
+\ Othersize, it's a 32-bit number.
+\ -------------------------------------------------------------------
+\ I have inserted a space between each group of 4 bits to make it
+\ easier for visualizing the data being displayed.
+\ -------------------------------------------------------------------
+
+\ Returns the value of the specified bit in /byte/ (0 or 1)
+
+: ?Bit ( byte bit# -- 0/1 ) 1 swap LSHIFT and if 1 else 0 then ;
+
+value %%bitsize
+
+: ?BitTest ( c/n/d -- )
+\ scale the loop
+  dup 0< if                     \       if negative, do 32 bits
+    32
+  else
+    256 over > if
+      8                         \ c 8
+    else
+      65536 over > if
+        16                      \ n 16
+      else
+        32                      \ d 32
+      then
+    then
+  then
+  to %%bitsize                  \ c/n/d
+\ display the data
+  base @
+  decimal      over . $3A emit bl emit  \ display decimal #
+  hex $24 emit over . $3A emit bl emit  \ display hex #
+  base !
+  %%bitsize 0 do                \ c/n/d   display binary pattern
+    dup %%bitsize 1- i - ?Bit
+    if 49 else 48 then emit
+    i 4 mod 3 = if bl emit then
+  loop                          \ c/n/d
+  drop                          \ --
+  cr
+;
+
+\ Example displays:
+\ 15 ?bittest        15 :    $F : 0000 1111
+\ 65535 ?bittest  65535 : $FFFF : 1111 1111 1111 1111
+
+base !                                  \ restore base to entry value
+
+[then]
+

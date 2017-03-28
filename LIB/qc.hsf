@@ -1,0 +1,226 @@
+( Circular byte queue for general purpose stuff  21MAR94 FOX )
+\ originally written for MaxForth 68hc11 :-)
+\ Re-write to optimize for HSF2000
+\ using inline: improved speed by 112%
+
+
+true value HSF2000          \ control if we want ANS Forth or HSF2000
+
+HEX
+
+FORTH DEFINITIONS
+: CQUEUE: ( n -- <text>)   ( n MUST be a power of 2 {2,4,8,16 etc} )
+    create
+        dup
+        dup 1- and ABORT" Queue size must be power of 2"
+        0 ,          ( write pointer "HEAD" )
+        0 ,          ( read  pointer "TAIL" )
+        0 ,          ( byte counter )
+        DUP 1- ,     ( mask value to provide wrap around )
+        ALLOT        ( data          )
+
+     DOES>  ;        ( just leave the address of this data structure)
+
+
+( Pointers to the Queue data structure )
+Hsf2000  [IF]       \ HSF2000 optimized code
+
+: ->HEAD ( q -- adr )      ;            ( for clarity of syntax only)
+synonym ->TAIL  2+
+synonym ->CNT   4+
+synonym ->MSK   6+
+synonym ->DATA  8+
+
+
+[ELSE]
+: ->HEAD ( q -- adr )      ;            ( for clarity of syntax only)
+: ->TAIL ( q -- adr ) 2+   ;
+: ->CNT  ( q -- adr ) 4+   ;
+: ->MSK  ( q -- adr ) 6+   ;
+: ->DATA ( q -- adr ) 8+   ;
+
+[THEN]
+
+
+Hsf2000 [IF]       \ HSF2000 optimized code
+
+  code head++
+        inline:  DUP
+        inline: >R
+    \   inline: ->HEAD                  \ don't need syntactic sugar here
+        inline: @
+        inline: 1+
+        inline: R@
+        inline: ->MSK
+        inline: @
+        inline: AND
+        inline: R>
+     \  inline: ->HEAD                  \ don't need syntactic sugar here
+        inline: !
+        next.
+  end-code
+
+[ELSE]  \ ANS/ISO standard code
+
+: HEAD++ ( q -- )
+        DUP
+        >R ->HEAD @ 1+
+        R@ ->MSK @ AND
+        R> ->HEAD ! ;
+
+[THEN]
+
+
+Hsf2000 [IF]       \ HSF2000 optimized code
+
+  CODE TAIL++
+        inline: DUP
+        inline: >R
+        inline: ->TAIL
+        inline:  @
+        inline: 1+
+        inline: R@
+        inline: ->MSK
+        inline: @
+        inline: AND
+        inline: R>
+        inline: ->TAIL
+        inline: !
+        NEXT.
+  END-CODE
+
+
+[ELSE]
+: TAIL++ ( q -- )
+        DUP
+        >R  ->TAIL @ 1+
+        R@ ->MSK @ AND
+        R> ->TAIL ! ;
+
+[THEN]
+
+
+
+: FLUSHQ ( q -- )
+        dup ->HEAD off
+        dup ->TAIL off
+            ->CNT  off ;
+
+: HEAD=TAIL? ( q -- )  DUP >R ->HEAD @   R> ->TAIL @ = ;
+: CNT=MSK?   ( q -- )  DUP >R  ->CNT @ R> ->MSK @ = ;
+: ?EMPTY     ( q -- )  ->CNT @ 0=  ABORT" Queue is empty" ;
+: ?FULL      ( q -- )  CNT=MSK? ABORT" Queue is full" ;
+
+
+
+
+Hsf2000 [if]
+
+CODE <QC@>
+        inline: R@
+        inline: ->CNT
+        inline: 1-!                     ( decrement the counter)
+        inline: R@
+        inline: TAIL++                        ( increment the tail)
+        inline: R@
+        inline: ->DATA
+        inline: R>
+        inline: ->TAIL
+        inline: @
+        inline: +         ( calculate: [data+tail]= adr)
+        inline: C@                ( fetch the byte at adr)
+        NEXT.
+END-CODE
+
+
+CODE <QC!>
+      inline: R@
+      inline: ->CNT
+      inline: 1+!                    ( increment the counter)
+      inline: R@
+      inline: HEAD++                       ( increment the head)
+      inline: R@
+      inline: ->DATA
+      inline: R>
+ \    inline: ->HEAD    ( sugar; not needed)
+      inline: @
+      inline: +        ( calculate: [data+head]= adr )
+      inline: C!                             ( store the byte at adr )
+      next.
+end-code
+
+: QC@    ( q -- c )
+       DUP >R ?EMPTY                    ( abort if q empty )
+       <QC@>  ;
+
+
+: QC!    ( c q -- )
+       DUP >R ?FULL                    ( abort if q full)
+       <qc!> ;
+
+[else]
+
+: QC@    ( q -- c )
+       DUP >R ?EMPTY                    ( abort if q empty )
+       R@ ->CNT 1-!                     ( decrement the counter)
+       R@ TAIL++                        ( increment the tail)
+       R@ ->DATA  R> ->TAIL @ +         ( calculate: [data+tail]= adr)
+       C@ ;                             ( fetch the byte at adr)
+
+
+: QC!    ( c q -- )
+       DUP >R ?FULL                    ( abort if q full)
+       R@ ->CNT 1+!                    ( increment the counter)
+       R@ HEAD++                       ( increment the head)
+       R@ ->DATA  R> ->HEAD @ +        ( calculate: [data+head]= adr )
+       C! ;                            ( store the byte at adr )
+
+[then]
+
+
+( Example Code: )
+
+false [if]
+
+\ Testing code ==========================================================
+
+DECIMAL
+( create a 1K byte queue data structure )
+1024 CQUEUE: Q
+
+( put the letters 'A' to 'Z' into the in the Queue )
+: QLOAD
+       3 0
+       do
+         127 1
+         DO
+           I Q QC!
+         LOOP
+         13 Q QC!
+         10 Q QC!
+       loop ;       ( put  CR/LF into the Q )
+
+
+
+: QTYPE  ( queue -- )
+        BEGIN
+          Q ->CNT @ 0>          ( is there something in the Q ? )
+        WHILE
+          Q QC@  EMIT           ( show it )
+        REPEAT ;
+
+: qview  ( q -- )
+        cr ."  Head pointer="  DUP ->HEAD ?
+        cr ."  Tail pointer="  dup ->tail ?
+        cr ."  Bytes in Q  ="  dup ->cnt  ?
+        cr ."  Size of Q   ="  dup ->msk @ 1+ . ."  bytes"
+        drop ;
+
+
+
+[then]
+
+( to put some chars in Q type QLOAD.  If you do this repeatedly it )
+( will fill the Q and abort with an error message                  )
+
+( to view the contents of Q type Q QTYPE <enter> )

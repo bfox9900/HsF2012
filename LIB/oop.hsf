@@ -1,0 +1,86 @@
+\ ******************* OBJECT ORIENTED FORTH ***********************
+\ *                                                               *
+\ * Origin: Forth dimensions magazine Vol. X No.2 Rick Hoselton   *
+\ * Modified for the 68HC11 MPU running MaxForth  by Brian Fox    *
+\ * 07DEC93  London Ont. Canada                                   *
+\ *****************************************************************
+
+\ move to HSF2000 for fun June 24 2015
+
+
+\ : NIP  SWAP DROP ;                             \ **** This word should be re-coded in assembler *********
+
+\ 106 USER CSP
+
+\ : !CSP    SP@  CSP ! ;
+
+: ACTION  ( obj msg -- )
+        SWAP 6+                                 \  locate the methods pointer. HSF2000 has 6+ as code word
+        BEGIN
+            @ 2DUP cell+ @                      \ search for that message
+        = UNTIL
+        4+  NIP EXECUTE  ;                      \ execute the found message. HSF2000 has 4+ as code word
+
+
+VARIABLE 'MSG                                    \ current MESSAGE # location
+VARIABLE 'OBJECT                                 \ points to current OBJECT
+
+
+: ACT   ( pfa msg -- )                           \ What MESSAGES do
+        2DUP 'MSG @ !  'OBJECT !   ACTION ;
+
+: ME    ( -- ?)  'OBJECT @ ;                     \ the current OBJECT
+
+
+\ Object Addressing ..............................................
+
+: >OBJECT ( rel-adr -- adr)     ME + ;                            \ locate in current object
+: >SUPER ( rel-adr -- adr )     ME @ + ;                          \ locate in OBJECT's parent
+: LINK,  ( adr -- )             HERE OVER @ ,  SWAP !  ;          \ link here to addressed head, adr points here, here points where adr pointed
+
+\ MASTER OBJECT .................................................
+: OBJECT> ( -- )
+        'OBJECT LINK,
+        0 ,
+        cell    >SUPER   LINK,
+        2 cells >SUPER  @  , ;
+
+VARIABLE MASTER                        ( master is the ROOT object)
+        MASTER 'OBJECT !
+        OBJECT>
+        2 >OBJECT  6 ERASE
+
+
+\ method ........................................................
+
+: <METHOD> ( -- msg )    create HERE    DOES> ACT  ;
+
+: ?CREATE ( -- msg)
+        >IN @  BL WORD FIND   ( n cfa )
+        IF    NIP   >BODY     ( pfa )        \ this is probably wrong for HSF
+        ELSE  >IN ! <METHOD>
+        THEN ;
+
+: <METHOD:> ( -- )
+        ?CREATE
+        6 >OBJECT LINK,
+        [compile] :
+        !CSP ] ;
+
+\ MASTER METHODS .............................................
+
+\ The system base method
+ <METHOD:>  ANCHOR ." I don't understand" ;
+
+  ' ANCHOR >BODY 2+ ' MSG !
+
+\ this looks wierd cuz we are defining the fundamentals of our new language in the new language!
+<METHOD:>  METHOD: ( -- )   <METHOD:>  ;
+
+MASTER METHOD:  OBJECT:
+       create  OBJECT>
+
+: .METHOD ( link -- ) CR DUP 6 U.R   DUP @ 6 U.R   cell+ @ DUP 6 U.R  2 SPACES ( cfa) .word )  ;
+
+
+

@@ -1,0 +1,178 @@
+\ name: mtools.hsf
+\ date: 24Apr97
+\ copyright brian j. fox (c) 1995
+\ All rights reserved
+\ dependancies: HSF2000, mtask.hsf
+\
+\ revisions:
+\            mar 2005 re-write from tools written for MaxForth
+\            Jun 2015 re-write again, now the mtask.hsf finally works! :-))
+
+
+[undefined] <yield>  [if] include mtask.hsf  [then]
+
+
+FORTH DEFINITIONS
+: MTOOLS ;
+
+DECIMAL
+
+VARIABLE ASLEEP                                  \ hold the number of sleeping jobs
+VARIABLE AWAKE                                   \ hold the number of awake jobs
+VARIABLE ACTIVE                                  \ hold the job that we want to focus on
+
+\ VARIABLE OLDUP
+\ VARIABLE OLDIO
+
+: OBSERVE  ( task -- )  ACTIVE ! ;
+: ACTIVE@    ( -- adr )   ACTIVE @ ;
+: ?ACTIVE   ( -- ) ACTIVE@ 0= ABORT" Set the task with <task-name> OBSERVE" ;
+: LOCAL@     ( task var -- n ) local @ ;
+
+
+\ : >us  ( hstimer_ticks -- us )  \ convert ticks to uS           \ moved to HSTIMER.HSF
+\          count_convert 10000 */ ;
+
+
+\ : pulse   ( -- n) \ shows time elapse during a yield in uS      \ moved to mtask.hsf
+\                timer[0] yield timer[0] swap - >us ;
+
+
+: .PULSE
+        BEGIN
+          yield
+           timer[0] yield timer[0] swap -  U. SPACE
+          500 ms
+          ?TERMINAL
+        UNTIL ;
+
+
+: JOB-COUNT  ( -- n )                               \ go through the linked list and count how many tasks are in the system. N = # of new tasks (not myself)
+       0 >R                                         \ cheap way to may local variable on the return stack
+       myself
+       BEGIN
+          task-link local@                          \ get the link to the next job
+          dup myself <>                             \ am I back to myself?
+       while
+           r> 1+ >R                                 \ pop the job counter, increment and push it back to the return stack
+       repeat
+       DROP
+       R> ;
+
+: killall ( -- )
+        0 >R
+       myself
+       BEGIN
+          task-link local@                          \ get the link to the next job
+          dup myself <>                             \ am I back to myself?
+       while
+           dup SLEEP
+           r> 1+ >R                                  \ increment the job counter variable
+       repeat
+       DROP
+       cr R>  3 .R  ."  jobs killed";
+
+: wakeall ( -- )
+        0 >R
+       myself
+       BEGIN
+          task-link local@                          \ get the link to the next job
+          dup myself <>                             \ am I back to myself?
+       while
+           dup WAKE                                  \ wake the task
+           r> 1+ >R                                 \ increment the job counter
+       repeat
+       DROP
+       cr R> 3 .R  ."  jobs awaken";
+
+
+: .awake        ( ? -- ) IF ." awake"  ELSE ." asleep"  THEN ;
+: awake/asleep  ( ? -- ) if  awake 1+!  else asleep 1+! then ;
+: .status       ( ? -- ) if ." Blocking"  else ." Running" then ;
+
+: .Tblock  ( -- )
+           ?ACTIVE
+       cr ." Observing TASK: " ACTIVE @ U.  tab  ."  Links to  :" ACTIVE@ task-link local @ u.
+       cr ." ------------------------------------------------------"
+       cr ." TASK-FLAG ="  tab active@ task-flag local @ .awake
+       cr ." TASK-STAT ="  tab active@ task-stat  local @ 5 u.r
+       cr ." Stack Mem ="  tab active@ task-stack local @ 5 u.r
+       cr ." Buffers   ="  tab active@ task-bufs  local @ 5 u.r
+       cr ." Priority  ="  tab active@ priority   local @ 5 u.r
+       cr ." Mailbox   ="  tab active@ TASK-mail  local @ 5 u.r
+       cr ." Task ID   ="  tab active@ TASK-ID    local @ 5 u.r
+       cr ." Timeout   ="  tab active@ timeout    local @ 5 u.r
+       cr ." Port#     ="  tab active@ port#      local @ 5 u.r
+       cr ;
+
+
+: .TASK  ( task -- )  OBSERVE  .TBLOCK  ;
+
+
+
+: .jobline ( -- )
+
+                dup  ( PID)           5 U.R tab      \ print the user address
+                DUP TASK-ID LOCAL @   4  .R tab
+                dup task-stat local @ 4  .R tab
+                dup priority  local @ 6 U.R tab tab
+                dup task-flag local @ dup .awake awake/asleep  TAB
+                dup SCR local @ 7 u.R  TAB  TAB
+                Pulse .  TAB  ;
+
+: JOBS
+     page ." HSF2000 Task List"
+       cr ."  PID      ID#    STATUS   Priority       FLAG      SCR     Pulse"
+       cr ." ---------------------------------------------------------------------------"
+       begin
+          3 0 at-xy
+          awake off   asleep off                      \ clear the counter variables
+          myself                                      \ get the next task's address on the stack
+
+          BEGIN
+               task-link local@                       \ get the link to the next job
+               dup myself <>                          \ am I back to myself?
+          while
+               .jobline cr
+          repeat
+          DROP
+
+          ?terminal
+       until
+       decimal
+       TAB  awake @ asleep @ +  .  ." Jobs:"  TAB awake ? ."  Running "  TAB  asleep ? ."  Sleeping"
+ ;
+
+
+: SCOPE ( adr -- )                               \ "scope" an address every 1 ms
+       CR BEGIN  1 ms  DUP ?  ?TERMINAL  UNTIL DROP ;
+
+
+
+EXIT
+
+: .TNAME  ( adr -- )  4 - NFA ID. ;
+
+: GET-STACKS ( -- )            ( reads stack pointers of active task )
+       ACTIVE@ UP !
+       RP@ \ TRP !
+       SP@ \ TSP !
+       myself UP ! ;
+
+ ( display parameter stack horizontally)
+: .PS  ( -- )
+       GET-STACKS
+       TSP @  S0 @ 2DUP =
+       IF ." Empty stack"  2DROP
+       ELSE  2-  DO  I @  4 .R  -2 +LOOP
+       THEN ;
+
+( display return stack )
+: .RS  ( -- )
+       GET-STACKS
+       HEX
+       TRP @ R0 @  1-  2DUP =
+       IF ." empty return stack" 2DROP
+       ELSE  DO   I @ 4 U.R SPACE   -2 +LOOP
+       THEN  DECIMAL ;
+

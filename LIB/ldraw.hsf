@@ -1,0 +1,23 @@
+\ line drawing by C.H. Ting.  Not too fast but clever and small
+
+: ldraw ( x1 y1 x1 x2 -- )
+        2over 2over      \ perform a '4DUP'
+        rot - abs        \ calc ABS(y2-y1)
+
+        -rot abs         \ calc ABS(x2-x1)
+
+        max 2 <          \ within 1 pixel?
+        if
+           2drop
+           color @ plot  \ draw a pixel (requires your graphic words)
+
+        else
+           2over 2over
+           rot + 1+ 2/ >R
+           + 1+ 2/ r>
+           2dup 2rot
+           recurse recurse  \ draw each of the two segments
+        then
+;
+
+

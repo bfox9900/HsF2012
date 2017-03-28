@@ -1,0 +1,44 @@
+\ MFILES.FOX    A higher level file interface              29FEB92 FOX
+HEX
+
+forth definitions
+
+800 SEGMENT FILE-BUFF
+
+forth definitions
+
+$" dummy  file spec string space                       " FILE-BUFF FILE: FDB1
+
+
+: FNAME!  ( $ -- )   FDB1  FILE @ $! ;
+
+DECIMAL
+        : MHANDLE@ ( -- handle of ACTIVE file)
+                   THE MHANDLE DUP 0= ABORT" No Mfile opened";
+
+        : PTR!    ( 32bit file-PTR --)  MHANDLE@ LSEEK 2drop ;
+
+        : PTR@    ( -- d) 0 0 MHANDLE@ LSEEK+ ;
+
+        : FILE-SIZE@   ( -- 32bit file-size)
+                  PTR@ D>R 0 0 MHANDLE@ LSEEK++   DR> PTR! ;
+
+        : RESTORE ( -- )  0 0 MHANDLE@ LSEEK DROP
+                          0 THE SEG 4I!
+                          FR ;                  \ sets R# & COL to 1
+
+        : EOF?   ( -- ?)  THE R# ;
+
+        : READ$   ( -- pad ) <MFILE 255 GW ;
+        : WRITE$  ( $ -- )   >MFILE $. ;
+
+\ Hi-level words to use for sequential file access
+: OPEN_READ    ( $ -- )  FNAME! OPEN_R   ;
+: OPEN_WRITE   ( $ -- )  FNAME! OPEN_W   ;
+: OPEN_UPDATE  ( $ -- )  FNAME! OPEN_R/W ;
+: CREATE_FILE  ( $ -- )  FNAME! MAKE_FILE ;
+: OPEN_APPEND  ( $ -- )  OPEN_WRITE  0. MHANDLE@ LSEEK++ DROP ;
+
+EXIT
+
+

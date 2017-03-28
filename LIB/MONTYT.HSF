@@ -1,0 +1,258 @@
+\ test code for Monty string language
+
+: pressany
+            cr ." Press a KEY to continue>"  KEY DROP ;
+
+
+TRUE [IF]
+255 $VARIABLE A$
+255 $variable B$
+255 $variable X$
+
+
+A$ :="         Lorem ipsum dolor sit amet, consectetuer adipiscing elit @#$%^ up son-of-a-!#$!$#^&        "
+B$ :=" abcdefghijklmnopABCDEFGHIJKLMNOP"
+x$ :=" this is a short string"
+
+page
+cr ." MONTY.HSF STRING WORD EXTENSIONS TESTS"
+cr
+
+CR
+." Print Demo 3 string constants"
+CR A$ $.
+CR
+CR B$ $.
+CR
+cr x$ $.
+cr
+CR ." ----------"
+cr
+cr ." Concatentation:  A$ X$ +$"
+CR A$ x$ +$ $. cr
+CR
+.s
+pressany
+
+page
+cr ." REMOVE LEADING AND TRAILING BLANKS AND STORE IN a$"
+cr
+cr ." A$ raw: "
+cr a$ $.
+cr
+CR ." cleaned:" A$ CLEAN$  a$ $!
+cr a$ $.
+CR
+cr ." removing punctuation"
+cr  A$ PUNCTUATION$ remove$ $. cr
+.s
+pressany
+
+PAGE
+cr ." [ * as fill char]  Right justify string"
+CHAR * >FILLCHAR
+
+cr X$ 40 RJUST$ $.
+
+CR
+cr ." [ % as fill char]  Right justify string 55 WIDE"
+CHAR % >FILLCHAR
+
+cr X$ 55 LJUST$ $.
+CR
+
+
+cr ." [ # as fill char]  CREATE BARS AND Centre a string 75 WIDE"
+CHAR # >FILLCHAR
+CR 75 FILLER$ $.
+cr X$ 75 center$  $.
+CR 75 FILLER$ $.
+CR
+
+cr ." Replace all Char e with Char ? (replace-char$)"
+
+CR  a$ $.
+cr  a$ char e  char ? replace-char$  $.
+cr
+cr
+.s
+pressany
+
+
+PAGE
+CR ." Create a title from any string"
+cr
+cr  x$ $.
+cr  x$ title$ $.
+CR
+CR ." $istitle? Test function... "
+cr
+cr
+CR   x$ $.   X$ $istitle? space .
+cr   x$ title$  DUP COUNT TYPE  $istitle? space .
+cr ." ( non-zero = true)"
+cr
+.s
+pressany
+
+page
+
+cr ." Reverse a String Test"
+cr
+cr b$ $.
+cr b$ reverse$ $.
+cr
+cr
+cr ." Case changes:  toupper$, tolower$, swapcase$ reverse$ "
+
+cr ." input: " b$ $.
+cr
+cr b$ upper$ $.
+cr
+cr b$ lower$ $.
+cr
+cr b$ swapcase$ $.
+cr
+cr b$ reverse$ $.
+cr
+.s
+pressany
+
+page  ." Nested Functions Tests"
+cr
+cr ." reverse$ char l split$  upper$ title$ vowels$ remove$ "
+cr ." (Show all intermediate string stack products)"
+cr
+cr B$ $.
+cr B$  reverse$ dup count type
+cr vowels$ remove$ dup count type
+cr char l split$ dup count type
+cr upper$ dup count type
+cr
+CR
+CR ." Show string stack:"
+cr 
+cr  .SS
+cr
+CR $.
+.SS
+.s
+pressany
+
+
+[THEN]
+
+
+
+
+
+
+
+FALSE [if]
+
+     CR ." Type DEMO to see monty work"   cr
+
+\ TEST mONTY \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+255 $VARIABLE A$
+255 $variable B$
+255 $variable X$
+
+A$ :="       The quick brown fox jumped over the lazy dog. (Did you see that guy?) He is one @#$%^ up son-of-a-!#$!$#^&        "
+B$ :=" Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat."
+
+: pressany
+
+: MONTYINTRO
+      page
+     ." The following is a demonstration of the Functions that are available with MONTY" CR
+     CR
+     ." Give the following code..."  CR
+    green fg
+     ." 255 $VARIABLE A$ " CR
+     ." 255 $variable B$ " CR
+     ." 255 $variable X$ " CR
+     ."  A$ :=' The quick brown fox jumped over the lazy dog. (Did you see that guy?) He is one @#$%^ up son-of-a-!#$!$#^&'" CR CR
+     ."  B$ :=' Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.'" CR CR
+     ltgray fg
+     cr  ." Here is what we can do..."
+     CR
+     CR
+     pressany ;
+
+
+
+: REMOVECHARS
+      page     \ remove characters demo
+      green fg A$ $.
+      CR ltgray fg
+      CR ." The string above can be cleaned of spaces front and back with:" 
+      CR green fg ." A$ BL strip$"
+      CR a$ bl strip$ top$ count type
+      CR
+      LTGRAY FG
+      CR  2000 ms
+      ." Then Remove all the vowels an punctuation with this Code:"
+      CR
+      CR GREEN FG ." 'A$ vowels$ remove$  puntucation$ remove$'"
+      CR LTGRAY FG  ." (vowels$ & punctuation$ are string CONSTANTS in MONTY)"
+      CR
+      CR  ." and Print the result with this code:"
+      CR green fg ." A$ $."
+      2000 ms
+      cr A$ bl strip$  vowels$ remove$  PUNCTUATION$ REMOVE$ $.
+      CR
+      2000 ms
+      ltgray fg
+      CR ." And the original string, A$, is not altered in the process!"
+      1500 MS
+      CR GREEN FG ." CR A$ $."
+      CR A$ $.
+      CR
+      ltgray fg
+      CR PRESSANY ;
+
+: REVERSE-STRING
+       page     \ Reverse a string
+      ." Reverse all  the characters in string and not destoy the original" CR
+      ." With this Code..." CR
+      CR
+      GREEN FG ."  A$ reverse$" CR
+      LTGRAY FG ."  and Print the result with this code:  B$ reverse$ $. "  CR
+      CR
+       2000 MS
+
+      GREEN FG b$ reverse$ $. CR
+
+      CR
+      LTGRAY FG ." And the original string, A$, is not altered in the process!" CR
+      2000 ms
+      GREEN FG
+      cr ."  A$ $. CR "   CR
+      A$ $. CR
+      LTGRAY FG ;
+
+: NEST-FUNCTIONS
+       page     \ nested string functions
+      ." Monty's functions can be nested to create complex maniuplations" CR
+      ." because they happen on a string stack..." CR
+      CR
+      ." Example..." CR
+      CR
+      GREEN FG ."  A$ punctuation$ remove$  BL STRIPC reverse$  vowels$ remove$   reverse$  upper$ "  CR
+      LTGRAY FG ."  The result is on the string stack ready to be printed '$.' again:"
+
+      1000 ms
+
+      GREEN FG A$ punctuation$ remove$  BL STRIPC reverse$  vowels$ remove$   reverse$  upper$ $.
+      CR
+      LTGRAY FG ." And the original string, A$, is not altered in the process!" CR
+      2000 ms
+      GREEN FG ."  A$ $. CR "   CR
+      A$ $. CR
+      LTGRAY FG CR ;
+
+: DEMO
+       montyintro   removechars  reverse-string   nest-functions ;
+
+
+[then]

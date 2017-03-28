@@ -1,0 +1,61 @@
+\ QUEUES                                                 30MAR91 FOX
+
+SYNONYM QSIZE@ 2I@
+SYNONYM QHEAD@ 4I@
+SYNONYM QTAIL@ 6I@
+SYNONYM QCNT@  8I@
+
+SYNONYM QSIZE! 2I!
+SYNONYM QHEAD! 4I!
+SYNONYM QTAIL! 6I!
+
+\ Return the FAR address of the actual head & tail
+: THE-HEAD ( qname -- seg adr)  DUP>R @ R> QHEAD@ ;
+: THE-TAIL ( qname -- seg adr)  DUP>R @ R> QTAIL@ ;
+
+: +HEAD  ( qname -- )
+        DUP>R
+        1 R@ 8 I+!                  \ incr Q counter
+        R@ QSIZE@  R@ QCNT@ > ABORT" Q overflow"
+        R@ QHEAD@  1+
+        R@ QSIZE@ MOD
+        R>  QHEAD! ;
+
+: +TAIL  ( qname -- )
+        DUP>R
+        -1 R@ 8 I+!
+        R@ QTAIL@ 1+
+        R@  QSIZE@ MOD ( DUP R@ QHEAD@ = ABORT" Q TAIL overflow"  )
+        R>  QTAIL! ;
+
+: RESET-Q ( qname -- )
+        DEPTH 0=  ABORT" Q descriptor expected"
+        2 OVER  QHEAD!                     \ Set the head field to 1
+        0 SWAP  QTAIL! ;                   \ set the tail field to 0
+
+: QUEUE: ( Seg-desc - )
+        CREATE
+             DUP @ ( seg-adr) , QSIZE@ , ( head) 1 ,  ( tail) 0 , ( Qcnt) ,
+        DOES> ;
+
+
+\ these are the only operators you need to work with a CHAR-Q
+: CHAR-Q!   ( char qname -- )
+            DUP +HEAD ( THE-HEAD) DUP>R @ R> QHEAD@ C!L  ;
+
+: CHAR-Q@  ( qname -- char )
+            DUP +TAIL ( THE-TAIL)  DUP>R @ R> QTAIL@ C@L ;
+
+BEHEAD'' QSIZE@ QTAIL!
+
+EXIT
+
+: Index-Q: ( seg-desc size -- )
+        CREATE
+             SWAP @ ( seg-adr) , ( size) , ( head) 1 ,  ( tail) 0 ,
+        DOES> ;
+
+
+
+
+

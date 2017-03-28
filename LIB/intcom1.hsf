@@ -1,0 +1,98 @@
+\ FOR COM1 RS232 port HARDWARE INTERRUPT CONTROL
+\ with 2K byte buffer
+
+\ FOR "AT" compatibles only!!!
+\ ISR is hi-level forth
+\ buffer is in lists segment
+
+FORTH DEFINITIONS
+
+HEX
+   20 constant 8259.isr                 \ 8259 chip interrupt service register
+   21 constant 8259.imask               \ 8259 chip interrupt mask register
+   04 constant com1.int#                \ interrupt no. of com1 on at 8259
+   03 constant com2.int#                \ interrupt no. of com2 on at 8259
+ 1000 constant 2k
+2k 1- constant limiter                  \ must be a number with all bits high
+
+  3f8 constant com1.base                \ these are used for speed in the
+  2f8 constant com2.base                \ interrupt service routines
+
+com1.int# constant  the.int#
+
+\ These pointers that keep track of the circular Q's
+    0 value TAIL
+    0 value HEAD
+
+: HEAD++ ( -- ) head 1+ limiter and to head ;
+: TAIL++ ( -- ) tail 1+ limiter and to tail ;
+
+VARIABLE Q[]   2K ALLOT              \ COM2 buffer
+
+\ These operators put chars into the Q.
+: Q[]!  ( c -- )  HEAD++  Q[] HEAD IC! ;
+
+\ These get chars from the Q.  * You don't need any other operators!
+: Q[]@  ( -- c )  TAIL++  Q[] TAIL IC@ ;
+
+: CLEARQ[]    HEAD TO TAIL ;
+
+\ Setup 8259 & 8250 chips and set interrupt mask
+: INTERRUPT-ON  ( -- )           \ * The ORDER here is CRITICAL
+        0 mdm-ctl uart pc!              \ turn off rts & dtr
+            rx/tx uart pc@ drop         \ read the rx register to clear it
+           mdm-st uart pc@ drop         \ read modem status reg. to clear errors
+        1  int-en uart pc!              \ enable recieve interrupt only
+        0B mdm-ctl uart pc!              \ rts & dtr on. out2 on
+        8259.imask pc@                  \ get current interrupt mask
+        the.int# brst                   \ reset the 8259 bit to enable
+        8259.imask pc!                  \ store the new interrupt mask
+        q[] 2k erase                    \ clear the buffer
+        0 to head
+        0 to tail ;
+
+: INTERRUPT-OFF ( port# -- )
+        8259.IMASK pc@
+        The.int# BSET
+        8259.IMASK pc!
+        0 INT-EN  uart pc!
+        0 MDM-CTL uart pc! ;
+
+\ QKEY  fetch a key from the head of the Q
+HEX
+: QKEY  ( -- c )
+        BEGIN                                   \ enter a loop
+             HEAD TAIL <>                       \ until tail<>head
+        UNTIL
+        Q[]@ ;
+
+\ HI-LEVEL FORTH  interrupt handler
+HEX
+
+INT: COM1-ISR  ( -- )    \ approx 100 uS response  (4.77MHz 8088)
+       begin
+         com1.base pc@  Q[]!            \ read a character from the UART and enqueue
+         20 8259.ISR pc!                \ reset the 8259 chip isr bit
+         INT-ID uart pc@                \ reset the 8250 interrupt bit by reading it
+         2 AND                          \ check if the bit is still set
+       0= until                         \ loop until the bit is clear
+;INT
+
+\ install the interrupts in the vector table
+ ( reverse 0C & 0B for an XT computer )
+
+ 0C INT-VECTOR IV=COM1      \ create an interrupt vector structure
+
+ CA' COM1-ISR  IV=COM1 !    \ store the code address of the ISR into the structure created above
+
+     COM1: INTERRUPT-OFF    \ set the interrupt to a safe state of off
+    ( COM3: INTERRUPT-ON )
+     IV=COM1 INSTALL        \ install the pointer to the code in the DOS interrupt vector table
+
+: BYE   COM1: INTERRUPT-OFF     \ disable the comport interrupt
+      ( COM3: INTERRUPT-OFF )
+        IV=COM1 REMOVE          \ remove the vector from the table
+        BYE ;                   \ do the normal HSF bye routine to go to DOS
+
+EXIT
+

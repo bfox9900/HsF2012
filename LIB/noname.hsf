@@ -1,0 +1,6 @@
+\ :noname.hsf
+
+ \ doesn't work yet
+: :noname ( -- xt)
+
+          HERE   ] <;code> ;

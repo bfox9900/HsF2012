@@ -1,0 +1,110 @@
+\ circular byte queue
+
+hex
+\ data structure creator
+: cfifo: ( n -- <text>)   \ n must be a power of 2 {2,4,8,16 etc}
+    create
+        dup
+        dup 1- and abort" queue size must be power of 2"
+        0 ,          \ write pointer "head"
+        0 ,          \ read  pointer "tail"
+        0 ,          \ byte counter
+        dup 1- ,     \ mask value to provide wrap around
+        allot        \
+
+     does>  ;        \ at run time, just return the address of this data structure)
+
+
+: ->head ( q -- adr )  ;    \ syntax sugar.
+: ->tail ( q -- adr )     cell+   ;
+: ->cnt  ( q -- adr ) 2 cells +   ;
+: ->msk  ( q -- adr ) 3 cells +   ;
+: ->data ( q -- adr ) 4 cells +   ;
+
+
+: head++ ( q -- )
+        dup
+        >r ->head @ 1+
+        r@ ->msk @ and
+        r> ->head ! ;
+
+: tail++ ( q -- )
+        dup
+        >r  ->tail @ 1+
+        r@ ->msk @ and
+        r> ->tail ! ;
+
+
+: flushq ( q -- )
+        dup ->head off
+        dup ->tail off
+            ->cnt  off ;
+
+: head=tail? ( q -- )  dup >r ->head @   r> ->tail @ = ;
+: cnt=msk?   ( q -- )  dup >r  ->cnt @ r> ->msk @ = ;
+: ?empty     ( q -- )  ->cnt @ 0=  abort" queue is empty" ;
+: ?full      ( q -- )  cnt=msk? abort" queue is full" ;
+
+
+: qc@    ( q -- char )      \ 'q' fetch char , put on stack
+       dup >r ?empty                   \ abort if q empty
+       r@ ->cnt 1-!                    \ decrement the counter
+       r@ tail++                       \ increment the tail
+       r@ ->data  r> ->tail @ +        \ calculate: [data+tail]= adr
+       c@ ;                            \ fetch the byte at adr
+
+
+: qc!    ( char q -- )     \ 'q' store char from the stack
+       dup >r ?full                    \ abort if q full
+       r@ ->cnt 1+!                    \ increment the counter
+       r@ head++                       \ increment the head
+       r@ ->data  r> ->head @ +        \ calculate: [data+head]= adr
+       c! ;                            \ store the byte at adr
+
+\ test code:
+
+true [if]
+
+\ testing code ==========================================================
+
+decimal
+\ create a 1k byte queue data structure
+  256 cfifo: Q1
+  256 cfifo: Q2
+
+\ put the ascii charset into Q1
+: qfill ( -- )    [char] ~  [char] !  do  i Q1 qc!   loop ;
+
+: qtype  ( queue -- )
+        dup ->cnt @ 0= abort" queue empty"
+        begin
+          dup ->cnt @ 0>          \ is there something in the q ?
+        while
+          dup qc@  emit           \ show it
+        repeat
+        drop ;                    \ clean the stack
+
+: qstats  ( q -- )
+        cr ."  head pointer= "  dup ->head ?
+        cr ."  tail pointer= "  dup ->tail ?
+        cr ."  bytes in q  = "  dup ->cnt  ?
+        cr ."  size of q   = "  dup ->msk @ 1+ . ."  bytes"
+        drop ;
+
+[then]
+exit
+        Q1 qfill
+        Q2 qfill
+        cr
+        Q1 qstats cr
+
+        Q1 qtype  cr
+
+        Q1 flushq
+
+        Q1 qstats cr
+
+        Q1 qtype cr
+
+
+

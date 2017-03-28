@@ -1,0 +1,20 @@
+\ Multi-line comments
+
+\ read input stream until you encounter the string $
+: MULTILN ( $ -- )  BEGIN   BL WORD over $=   UNTIL DROP ;
+
+: (*    c" *)" MULTILN ; IMMEDIATE
+
+(* ******************************************************************
+           ALL...
+
+
+          ... this stuff should be skipped
+          
+          
+
+    ****************************************************************** *)
+
+
+
+

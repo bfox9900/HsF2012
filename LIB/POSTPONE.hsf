@@ -1,0 +1,30 @@
+\ postpone and tests
+
+HEX
+: POSTPONE      ( <name> -- )                             \ finally got around to GROKing Postpone for HSForth on Nov 5 2015 !!!!! duh :-)
+                ?COMP
+                -FIND  ( pfa imm ?)                       \ HsForth Find returns PFA. Old school style
+                0= ABORT" POSTPONE can't find"
+                40 AND 0=                                 \ test immediate flag
+                if   compile compile
+                then cfa compile, ; immediate             \ for immediate words )
+
+
+
+
+: TEST1 ." T1: interpretation" ;           \ => ok
+: TEST2 ." T2: compilation" ; IMMEDIATE    \ => ok
+
+
+
+: TEST3 TEST1 TEST2 ;                  \ => compilation ok
+                                       \ TEST3  => interpretation ok
+
+: TEST4 POSTPONE TEST1 ; IMMEDIATE     \ => ok
+
+: TEST5 TEST4 ;                        \ => ok
+                                       \ TEST5  => interpretation ok
+
+: TEST6 POSTPONE TEST2 ; IMMEDIATE     \ => ok
+                                        \ TEST6  => compilation ok
+                                        

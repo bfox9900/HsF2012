@@ -1,0 +1,201 @@
+ANEW  --ran_next--                              \  Wil Baden  2003-01-18
+
+\ BFox note: This compiled un-altered on hsf2000 but is incorrect.
+\            Needs a 32 bit system.
+\            But hurrah! hsf2000 compiles ANS Forth code!
+
+\  *********************************************************************
+\  *                                                                   *
+\  *  D E Knuth  2002-11-10                                            *
+\  *                                                                   *
+\  *     ran_next  ( -- 30-bit-random )                                *
+\  *                                                                   *
+\  *  Knuth's recommended random number generator from TAOCP,          *
+\  *  updated 2002.  (Ninth printing of third edition.)                *
+\  *                                                                   *
+\  *  Transformed to pure Core Forth by Wil Baden from:                *
+\  *     http://www-cs-faculty.stanford.edu/~knuth/programs/rng.c      *
+\  *                                                                   *
+\  *  This generator is good for a large billion (2^30) streams of     *
+\  *  billions of numbers, unlike a linear congruential sequence in    *
+\  *  32-bIt arithmetic (good for one stream of a few million          *
+\  *  numbers), or a linear congruential sequence in 16-bit            *
+\  *  arithmetic, such as from _Starting Forth_ (good for one          *
+\  *  stream of about five dozen numbers).                             *
+\  *                                                                   *
+\  *  The same numbers are generated in Forth, C, and Fortran.         *
+\  *                                                                   *
+\  *  Needs two's complement arithmetic.                               *
+\  *                                                                   *
+\  *  [Abstract by WB.]                                                *
+\  *                                                                   *
+\  *********************************************************************
+
+\    Knuth: "Every block of 100 consecutive values ... in the subsequent
+\    output of ran_array will be distinct from the blocks that occur
+\    with another seed. .... Several processes can therefore start in
+\    parallel with different seeds and be sure that they are doing
+\    independent calculations."
+
+100 CONSTANT  KK           \  the long lag
+37  CONSTANT  LL           \  the short lag
+1 30 LSHIFT CONSTANT  MM   \  the modulus
+
+    : TH  S" CELLS + " EVALUATE ; IMMEDIATE
+    : @PTR  @ ;
+    : !PTR  ! ;
+
+CREATE ran_x  KK CELLS ALLOT  \  the generator state
+
+\  ***************************  ran_array  ***************************
+
+\  oo>  Knuth's program comments are in unpunctuated lower-case.   <oo
+
+\  mod_diff       ( n1 n2 -- n3 )
+\     subtraction mod MM
+\     [Knuth defines this as a macro.]
+
+: mod_diff  S" - MM 1- AND " EVALUATE ; IMMEDIATE
+
+\  ran_array   ( aa n -- )
+\     put n new random numbers in aa
+\     aa   destination
+\     n    array length (must be at least KK)
+
+: ran_array                ( aa n -- )
+    KK 0 DO
+        over  ran_x I TH @
+            SWAP I TH !
+    LOOP
+    dup KK ?DO
+        over  dup I KK - TH @   over I LL - TH @  mod_diff
+            SWAP I TH !
+    LOOP                       ( aa j)
+    LL 0 DO
+        2dup  LL - TH @  >R  2dup  KK - TH @  R> mod_diff
+            ran_x I TH !
+        1+
+    LOOP
+    KK LL ?DO
+        2dup KK - TH @  ran_x I LL - TH @  mod_diff
+            ran_x I TH !
+        1+
+    LOOP
+    2DROP ;
+
+\  the following routines are from exercise 3.6--15
+\  after calling ran_start, get new randoms by, e.g., "x=ran_arr_next()"
+
+1009 CONSTANT  QUALITY  \  recommended quality level for high-res use
+CREATE  ran_arr_buf   QUALITY CELLS ALLOT
+CREATE  ran_arr_dummy  -1 ,
+CREATE  ran_arr_started  -1 ,
+
+\  [pointer to] the next random number, or -1
+CREATE  ran_arr_ptr  0 ,  ran_arr_dummy ran_arr_ptr !PTR
+
+\  guaranteed separation between streams
+70 CONSTANT  TT
+
+\  ***************************  ran_start  ***************************
+
+\   ran_start               ( seed -- )
+\     do this before using ran_array
+\     seed  selector for different streams
+
+KK 2* 1- CELLS CREATE  X  ALLOT  \  the preparation buffer
+
+: ran_start                ( seed -- )
+    dup  2 +  MM 2 -  AND    ( seed ss)
+    KK 0 DO
+        dup  X I TH !             \  bootstrap the buffer
+        1 LSHIFT  dup MM < NOT    \  cyclic shift 29 bits
+            IF  MM 2 -  -  THEN
+    LOOP  DROP               ( seed)
+    1 X CELL+ +!                  \  make x[1] (and only x[1]) odd
+    TT 1-  over MM 1- AND    ( seed t ss)
+    BEGIN  over WHILE
+        1 KK 1- DO                \  "square"
+            X I TH @  X I 2* TH !
+            0 X I 2* 1- TH !
+        -1 +LOOP
+        KK  KK 2* 2 -  DO
+            X  I KK LL -  -  TH @  X I TH @  mod_diff
+                X  I KK LL - - TH !
+            X  I KK - TH @  X I TH @  mod_diff
+                X I KK - TH !
+        -1 +LOOP
+        dup 1 AND IF              \  "multiply by z"
+            1 KK DO  X I 1- TH @  X I TH !  -1 +LOOP
+            X KK TH @  X !        \  shift the buffer cyclically
+            X LL TH @  X KK TH @  mod_diff  X LL TH !
+        THEN
+        dup IF  1 RSHIFT  ELSE  DROP 1-  0  THEN
+    REPEAT  2DROP DROP        ( )
+    LL 0 DO  X I TH @  ran_x I KK + LL - TH !  LOOP
+    KK LL DO  X I TH @  ran_x I LL - TH  !  LOOP
+    10 0 DO  X KK 2* 1- ran_array  LOOP  \  warm things up
+    ran_arr_started  ran_arr_ptr  !PTR ;
+
+\  *************************  ran_arr_cycle  *************************
+
+\  ran_arr_cycle           ( -- urandom )
+
+: ran_arr_cycle            ( -- urandom )
+    ran_arr_ptr @PTR ran_arr_dummy =  \  the user forgot to initialize
+        IF  314159 ran_start  THEN
+    ran_arr_buf QUALITY ran_array
+    -1 ran_arr_buf 100 TH !PTR
+    ran_arr_buf CELL+  ran_arr_ptr  !PTR
+    ran_arr_buf @ ;
+
+\  ***************************  ran_next  ****************************
+
+\  ran_next                ( -- 30-bit-random )
+\     after calling ran_start, get new randoms by, e.g.,
+\     "x=ran_arr_next()"
+\     [Knuth defines ran_arr_next in C as a macro, but this is not
+\     appropriate for Forth.]
+
+: ran_next                 ( -- 30-bit-random )
+    ran_arr_ptr @PTR @ dup 0< IF DROP
+        ran_arr_cycle
+    ELSE
+        1 CELLS ran_arr_PTR +!
+    THEN ;
+
+\  ran_unif                ( m -- u )                             (WB)
+\     Uniformly distributed random number in range 0 <= u < m.
+\     Rejects highest  MM mod m  numbers from the RNG output.
+\     ***  Uses MOD twice  ***
+
+: ran_unif                 ( m - u )
+    MM 2dup SWAP MOD -         ( m MM-rem)
+    BEGIN  ran_Next            ( m MM-rem random)
+        2dup > NOT
+    WHILE  DROP  REPEAT
+    NIP  SWAP MOD ;
+
+\  *******************************************************************
+\  *     Optional Test                                               *
+\  *******************************************************************
+
+\  Test for the correctness of the update.
+
+MARKER ONCE
+
+CREATE A  2009 CELLS ALLOT
+
+: MAIN                      ( -- )
+    310952 ran_start
+    2009 1+ 0 DO  A 1009 ran_array  LOOP
+    CR  A @ .  ." should be 995235265 "
+    310952 ran_Start
+    1009 1+ 0 DO  A 2009 ran_array  LOOP
+    CR  A @ .  ." should be 995235265 "
+    ;
+
+MAIN ONCE
+
+\ \   //   \\   //   \\   //   \\   //   \\   //   \\   //   \\   //   \\
+

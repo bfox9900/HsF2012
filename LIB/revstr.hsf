@@ -1,0 +1,31 @@
+\
+
+
+: string/ ( addr len -- addr' len' )
+           0                            \ start with a 0 len
+           0 rot 1-                     \ set loop indices for reverse loop
+           do
+              over I +  c@ bl = if drop I leave then
+           -1 +loop ;
+
+: lastspace ( addr len --  n )
+            string/ nip ;
+
+: .lastword  ( addr len -- ) 2dup  lastspace  /string type ;
+
+
+: chop  ( addr len -- addr len )  
+        2dup .lastword string/ ;
+
+255 $variable q  q :=" fire, in end will world the say Some"
+
+: .reverse ( addr len -- )
+      begin
+          dup 0>
+      while
+          2dup .lastword
+          string/
+      repeat 
+      2drop ;
+
+

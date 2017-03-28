@@ -1,0 +1,56 @@
+\ FPC number words
+
+
+CODE UM*   ( u1 u2 -- ud1 ) \ multiply unsigned u1 by unsigned u2
+                ax  pop.
+                bx  mul.
+                ax  push.
+                bx  dx  mov.
+                next.
+end-code
+
+HEX
+  02C constant ','
+  02D constant '-'
+  02F constant '/'
+
+\ hi level digit from Camel Forth, modified to require the base on the stack
+: DIGIT?      \ c base -- n -1 | x 0    true if c is a valid digit
+   >R
+   DUP 39 > 100 AND +              \ silly looking,
+   DUP 140 > 107 AND -  30 -       \ but it works!
+   DUP R> U< ;
+
+: DOUBLE?       ( -- f )
+\ Returns non-zero if a period was encountered during last numeric scan.
+                DPL @ 1+ 0 <> ;
+
+: CONVERT       ( +d1 adr1 -- +d2 adr2 )
+\ Convert the string at adr1 to a double number until an unconvertable
+\ character is encountered (pointed to by adr2).  Accumulate in +d1.
+                BEGIN   1+  DUP >R  C@  BASE @  DIGIT?
+                WHILE   SWAP  BASE @ UM*  DROP  ROT  BASE @ UM*  D+
+                        DOUBLE?  IF  1 DPL +! THEN  R>
+                REPEAT  DROP  R>  ;
+
+: (NUMBER?)     ( adr -- d flag )
+\ Convert string at  adr  to a number.  If successful, leave  TRUE  flag.
+\ ** THE STRING SHOULD TERMINATE WITH AN ASCII SPACE **
+                0 0  ROT  DUP 1+  C@  '-'  =  DUP  >R  -   dpl on
+                BEGIN   CONVERT  DUP C@  ','  '/' within?
+                WHILE    DPL off
+                REPEAT  -ROT  R> IF  DNEGATE  THEN   ROT C@ BL =  ;
+
+: NUMBER?       ( adr -- d flag )
+\ Convert a counted string to a number.  The string should terminate
+\ with an ASCII space and contain a valid, possibly signed, number.
+                FALSE  OVER COUNT BOUNDS
+                ?DO     I C@ BASE @ DIGIT? NIP
+                        IF      DROP TRUE LEAVE
+                        THEN
+                LOOP
+                IF   (NUMBER?)
+                ELSE  DROP  0 0 FALSE
+                THEN  ;
+
+
