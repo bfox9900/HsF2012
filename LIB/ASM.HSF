@@ -1,0 +1,495 @@
+\ ---------- 8088 Assembler
+ \
+  \
+  \ This 8088 Assembler was originally written by Mike Perry and
+  \ Steve Pollack.  It has been rewritten by Martin Tracy
+  \ and rewritten again by Rick VanNorman (to adapt it to a
+  \ 32-bit environment).
+  \ Programmers who are familiar with the original F83 assembler
+  \ will find the following major differences:
+  \
+  \ 1. the mode  #) is now simply )
+  \ 2. the mode S#) has disappeared.
+  \ 3. conditional macros have been replaced by local labels.
+  \ 4. REPZ and REPNZ are now REPE and REPNE.
+  \ 5. JZ  JNZ  JC  JNC  and more error checks have been added.
+  \ 6. the JMP and CALL instructions now have an indirect mode:
+  \
+  \    MYLABEL  # JMP  means  JMP to this label, but
+  \    MYVECTOR ) JMP  means  JMP indirectly through this address.
+
+\ ----------
+
+[undefined] FOR  [if]  include fornext.hsf  [then]       \ for next loops are used
+
+
+FORTH DEFINITIONS  DECIMAL
+
+HEX 0800 SEG-SIZE !       \ HSFORTH PUTS vocabularies in a segment. Needs 2k
+
+VOCABULARY ASSEMBLER2
+
+only forth also ASSEMBLER2 DEFINITIONS
+
+\ ---------- MISC
+
+[UNDEFINED] TRUE  [IF]   -1 CONSTANT TRUE    [THEN]
+[UNDEFINED] FALSE [IF]    0 CONSTANT FALSE   [THEN]
+
+\ ===================================================================
+\ Modify here for your memory model
+
+: H!   ! ;
+
+: _2bytes,  HERE H!  2 ALLOT ;
+: _4bytes,  HERE   2!  4 ALLOT ;
+
+DEFER here      ' HERE      IS here
+DEFER 1byte!    ' C!        IS 1byte!
+DEFER 1byte,    ' C,        IS 1byte,
+DEFER 2bytes,   ' _2bytes,  IS 2bytes,
+DEFER 4bytes,   ' _4bytes,  IS 4bytes,
+\ ===================================================================
+
+\ ---------- Predicates
+
+\ true if offset requires 2 bytes.
+hex
+: BIG? ( o - f)  $80 +  $FF00 AND  0= NOT ;
+
+\ aborts if relative distance is too far.
+: ?FAR ( o )     BIG? NOT ABORT" jump too far!" ;
+
+\ ---------- Local labels
+decimal
+10 CONSTANT MXL#
+
+\ unresolved fwd reference associative stack.  Emptied by READY.
+\ Associate stacks can be "popped" from the middle, or wherever
+\ the key is found.
+CREATE FWDS
+          2 CELLS ALLOT  ( pointers)
+          MXL# 2 * CELLS ALLOT  ( pairs)
+
+\ resolved label value array.  Cleared by READY.
+CREATE BWDS
+          MXL# CELLS ALLOT
+
+\ pushes unresolved reference.
+: LPUSH ( value=here' key=label#)
+          FWDS 2@ = 0= ABORT" huh?" ( full?)  FWDS  @ 2!  2 CELLS FWDS +! ;
+
+\ pops any unresolved references.
+: LPOP  ( key=label# - value=addr true | key 0)
+         >R  FWDS @  FWDS 2 CELLS +
+         BEGIN ( end start)
+               2dup = 0=
+         WHILE
+               DUP @  R@ =
+               IF ( foun2!)
+                  DUP CELL+ @ ( addr) >R
+                  SWAP 2 CELLS -  DUP FWDS 2!  2@ ROT 2!  \ promote last pair
+                  R> R> ( addr key)  -1 OR  ( addr true)  EXIT
+               THEN
+               2 CELLS +
+         REPEAT  2drop  R> 0 ;
+
+\ returns the address of the label n or 0 if unresolved.
+: L? ( n - a | 0)   DUP MXL# U< ABORT" Label address?"  CELLS  BWDS + @ ;
+
+\ assigns HERE to label n-1.  Resolves any forward references.
+\ Assumes 8-bit relative displacements.
+: L: ( n - a)
+         DUP L? 0= ABORT" label is assigned "  ( should be unknown)
+         here  OVER CELLS BWDS + 2!     ( now known)
+         BEGIN  DUP LPOP  ( a -1 | n 0)
+         WHILE
+                here OVER - 1-  SWAP OVER  ?FAR  1byte!  ( resolve ref)
+         REPEAT
+         2drop ;
+
+: L# ( n - a )   \ retrieves the value of label n-1.
+         DUP L?  ?DUP 0=
+         IF  here 1+ 2dup SWAP  LPUSH  THEN  NIP ;
+
+\ ---------- Variables
+
+VARIABLE WORD=  \ WORD/BYTE switch  -- normally WORD.
+VARIABLE FAR=   \ NEAR/FAR  switch  -- normally NEAR.
+VARIABLE LOG=   \ holds op mask for logical opcodes.  See B/L?
+
+: WORD   TRUE WORD= 2! ;    : BYTE   0 WORD= 2! ;
+: FAR    TRUE FAR=  2! ;
+
+\ ---------- base switches to octal here
+
+: OCTAL  8 BASE ! ;
+
+OCTAL
+
+\ ---------- Registers
+
+\ defines n register-id-modes used for building opcodes.
+ \ had to remove 1-.  My FOR NEXT loop stops at zero.
+: REGS ( n id )
+         SWAP ( 1- ) FOR  R@ 11 *  OVER 1000 *  OR  CONSTANT  NEXT  DROP ;
+
+
+10  1 REGS BH DH CH AH BL DL CL AL
+10  2 REGS DI SI BP SP BX DX CX AX
+
+10  4 REGS [BX] [BP] [DI] [SI] [BP+DI] [BP+SI] [BX+DI] [BX+SI]
+ 4  4 REGS                     [DI+BP] [SI+BP] [DI+BX] [SI+BX]
+
+ 4 10 REGS DS SS CS ES
+ 2 20 REGS  )  #
+
+\ ---------- Mode tests
+
+: MD   \ determines if a mode is a member of the given class.
+   CREATE  ( mode -  )   1000 * ,
+   DOES>   ( mode - f)   @ AND  0= NOT ;
+
+1  MD R8?   ( mode -    8-bit-register?)
+2  MD R16?  ( mode -   16-bit-register?)
+3  MD REG?  ( mode - 8/16-bit-register?)
+4  MD [x]?  ( mode -  indirect/indexed?)
+10 MD SEG?  ( mode -  segment-register?)
+
+: RLOW   ( register-mode - r/m-mask )  07 AND  ;
+: RMID   ( register-mode - reg-mask )  70 AND  ;
+
+\ ---------- Special mode tests
+
+\ true if n takes two bytes or sign-extend is not permitted.
+:  B/L?  ( n - f)   BIG?  LOG= @  OR ;
+
+\ true if mem -> acc
+: >ACC? ( mode reg - f)   RLOW 0=  SWAP ) = AND ;
+
+: ?MAD ( f )    ABORT" Mode?"  ;
+: ?ACC ( mode ) DUP AX =  SWAP AL = OR NOT ?MAD ;
+
+\ ---------- Opcode compilers
+
+:   OP, ( opcode mask | mask opcode )  OR 1byte, ;
+
+:    W, ( opcode mode )  R16?    NEGATE  OP, ;
+: WORD, ( opcode      )  WORD= @ NEGATE  OP, ;
+
+: RR,  ( register-mode1 register-mode2 )
+       RMID  SWAP RLOW OR  300 OP, ;
+
+: ,/C, ( n 16-bit? )  IF  2bytes,  ELSE  1byte,  THEN ;
+
+\ ---------- Address compilers
+
+\ compiles memory->register operand.
+: MEM, ( a/o mode register-mode)
+       RMID  OVER ) =                                ( direct )
+       IF   6 OP,  DROP  2bytes,
+       ELSE OVER RLOW OR  ( reg:r/m field) ROT ROT   ( field addr mode)
+       ( mode) [BP] =  OVER 0= AND                   ( 0 [BP] exception..)
+          IF  SWAP  100 OP, 1byte,  ELSE             ( ...requires offset)
+              SWAP OVER BIG?
+              IF  200 OP,  ( 2-byte offset) 2bytes,  
+              ELSE  OVER
+                  IF  100 OP,  ( 1-byte offset) 1byte,  
+                  ELSE  OP,  ( zero offset)
+                  THEN 
+              THEN 
+          THEN 
+       THEN  ;
+
+\ ---------- Address compilers
+
+\ register-mode selects BYTE/WORD w-field.
+: WMEM, ( a/o mode register-mode opcode )
+        OVER W,  MEM, ;
+
+\ selects between register->register and memory->register.
+: R/M,  ( [operand] mode register-mode )
+         OVER REG? IF  RR,  ELSE  MEM,  THEN ;
+
+\  R/M, but modifies opcode with BYTE/WORD.
+: WR/M, ( [operand] mode register-mode opcode )
+         2 PICK  DUP REG?
+         IF    W, RR,                         ( register->register)
+         ELSE  DROP  WORD, MEM,  WORD  
+         THEN ; ( memory  ->register)
+
+\ ---------- Opcode generators
+
+\ one-byte opcodes with implied operands.
+: 1MI   CREATE  C,   DOES>  C@ 1byte, ;
+
+\ two-byte opcodes with implied operands.
+: 2MI   CREATE  C,   DOES>  C@ 1byte,  12 1byte, ;
+
+\ jump to a one-byte displacement.
+: 3MI
+        CREATE  C,   DOES>  C@  1byte, ( a ) here - 1-  DUP ?FAR  1byte, ;
+
+\ LDS LEA LES opcodes.
+: 4MI
+        CREATE  C,   DOES>  C@  1byte, ( mem reg) OVER REG? ?MAD  MEM, ;
+
+\ ---------- Opcode generators
+
+\ string opcodes.
+: 5MI    CREATE  C,  DOES>  C@ WORD,  WORD ;
+
+\ one-byte opcodes with single operands.
+: 7MI    CREATE  C,  DOES>  C@  366 WR/M, ;
+
+\ IN and OUT.  Syntax for both: port/DX AL/AX IN/OUT
+: 8MI
+         CREATE  C,
+         DOES>   C@  OVER ?ACC  ROT
+                 DUP # =   OVER DX = OR NOT ?MAD # =
+                 IF  SWAP W,  1byte,
+                 ELSE  10 OR  SWAP W,
+                 THEN ;
+
+\ ---------- Opcode generators
+
+\ INC and DEC.  Syntax is: r/mem opcode.
+: 9MI
+         CREATE  C,
+         DOES>   C@  OVER SEG? ?MAD
+                 OVER R16?
+                 IF  100 OR  SWAP RLOW OP,
+                 ELSE  376 WR/M,
+                 THEN ;
+
+\ shift and rotate group.  Syntax is: r/mem [ CL | 1 ] opcode.
+: 10MI
+         CREATE  C,
+         DOES>   C@  OVER CL =
+                 IF    NIP 322
+                 ELSE  OVER 1 = IF  NIP  THEN   320
+                 THEN
+                 WR/M, ;
+
+\ ---------- Opcode generators
+: 11MI  \ CALL and JMP.
+   CREATE  C, C,
+   DOES>  >R     ( ... mode)  DUP REG? FAR= @ AND ?MAD  R>
+     OVER  # =   ( [d]addr # ^opcode)
+     IF  NIP  FAR= @
+        IF  1+ C@  1byte,  4bytes,
+        ELSE   C@  SWAP  here -  2-  SWAP OVER
+               BIG? NOT  OVER 1 AND ( JMP?)  AND
+               IF    2 OP, 1byte,
+               ELSE  1byte, 1- 2bytes,
+        THEN THEN
+     ELSE        ( r/mem     ^opcode)    377 1byte,
+            1+ C@  FAR= @ NOT 10 AND  XOR  R/M,
+     THEN   0 FAR= 2! ;
+
+\ ---------- Opcode generators
+
+\ POP and PUSH.
+: 12MI
+   CREATE  C, C, C,
+   DOES>     OVER REG?
+   IF    C@  OVER  R8? ?MAD   SWAP RLOW  OP,
+   ELSE  1+  OVER SEG?
+     IF  C@  OVER CS =  OVER 1 AND ( POP) AND  ?MAD
+        RLOW SWAP  RMID OP,
+     ELSE  COUNT SWAP C@  1byte,  MEM,
+   THEN THEN ;
+
+\ ---------- Opcode generators
+
+\ Note: BIG # AL is not detected as an error.
+: 13MA  ( operand reg opcode )
+   >R  OVER REG?                               ( reg->reg)
+   IF  R> OVER W, SWAP RR,  ELSE
+   OVER  DUP [x]? SWAP  ) = OR                 ( mem->reg)
+   IF  R> 2 OR WMEM,  ELSE  SWAP  # - ?MAD     ( #  ->reg)
+   DUP RLOW 0= ( AL/AX?)                       ( #  ->acc)
+   IF  R> 4 OR  OVER W,  R16? ,/C,  ELSE       ( data reg)
+   OVER B/L?  OVER R16?  2dup AND  ROT ROT ( data reg m m f)
+   NEGATE  SWAP NOT 2 AND  OR  200 OP,     ( data reg m)
+   SWAP  RLOW 300 OR   R>  OP,  ,/C,
+   THEN  THEN  THEN ;
+
+\ ---------- Opcode generators
+
+: 13MB  ( operand opcode )
+   >R   ROT DUP REG?   ( reg->mem)
+   IF    R> WMEM,
+   ELSE  # - ?MAD      ( #  ->mem) ( data mem)
+      2 PICK B/L?  DUP NOT 2 AND  200 OR  WORD,
+      ROT ROT R> MEM,  WORD= @ AND ,/C,  WORD
+   THEN ;
+
+\ adds, subtracts and logicals.
+: 13MI
+   CREATE  C, C,
+   DOES>   COUNT SWAP C@ LOG= 2!   OVER REG?
+   IF  13MA  ELSE  13MB  THEN ;
+
+\ ---------- Opcode generators
+
+\ RET.
+: 14MI
+   CREATE  C,
+   DOES>   C@  FAR= @ 10 AND  OR  0 FAR= 2!   ( [offset] opcode)
+   DUP  1byte,  1 AND 0= IF  2bytes,  THEN ;         (  offset  +RET  )
+
+
+\ Segment override prefices.
+
+: SEG ( seg )   RMID 46 OP, ;
+
+: CS:   CS SEG ;        : DS:   DS SEG ;
+: ES:   ES SEG ;        : SS:   SS SEG ;
+
+\ ---------- Special opcode  TEST
+: TEST ( source dest )
+  DUP REG?
+  IF  OVER REG?                                ( reg->reg)
+     IF    204 OVER W,  SWAP RR,
+     ELSE  SWAP  # - ?MAD                      ( #  ->reg)
+       DUP RLOW 0= ( AL/AX?)                   ( #  ->acc)
+       IF  250 OVER W,
+       ELSE  366 OVER W,  DUP RLOW 300 OP,  THEN
+       R16? ,/C,
+     THEN
+   ELSE  ( [offset] mode mem)  ROT  DUP REG?   ( reg->mem)
+     IF  204 WMEM,  ELSE  # - ?MAD             ( #  ->mem)
+     366 WORD,  0 MEM,  WORD= @ ,/C,  WORD
+   THEN  THEN ;
+
+\ ---------- base returns to decimal here
+
+DECIMAL
+
+\ ---------- Special opcode
+hex
+: MOV ( source destination )
+   DUP SEG? IF  08E 1byte, R/M,  ELSE                    ( mem->seg)
+   DUP REG? 
+   IF  2dup >ACC?                           ( mem->acc)
+     IF  0A0 SWAP W, DROP  2bytes, ELSE OVER SEG?         ( seg->reg)
+     IF  SWAP 08C 1byte,  RR,     ELSE OVER # =          ( #  ->reg)
+     IF  NIP DUP R16? SWAP RLOW OVER 8 AND OR 0B0 OP, ,/C,
+     ELSE  08A OVER W, R/M,  THEN THEN THEN          ( mem->reg)
+   ELSE  ROT  DUP SEG?                               ( seg->mem)
+     IF  08C 1byte, MEM, ELSE   DUP # =                  ( #  ->mem)
+     IF  DROP 0C6 WORD, 0 MEM,
+         WORD= @ ,/C,       ELSE  2dup >ACC?         ( acc->mem)
+     IF    0A2 SWAP W,  DROP  2bytes,
+     ELSE  088 OVER W,  R/M,                         ( reg->mem)
+     THEN 
+   THEN THEN THEN THEN   WORD ;
+
+\ ---------- Special opcodes INT and XCHG
+
+: INT  ( n )
+   DUP 3 = IF  DROP  0CC 1byte,  EXIT  THEN
+   00CD 1byte,  1byte, ;
+
+: XCHG ( mem reg)
+   DUP REG?
+   IF  OVER REG? OVER AX = AND                  ( reg->AX )
+     IF  DROP RLOW 090 OP,  ELSE  OVER AX =      ( AX- >reg)
+     IF  NIP  RLOW 090 OP,  ELSE  086 WR/M, ( mem->reg)
+     THEN  THEN
+   ELSE  ROT 086 WR/M,  THEN ;                   ( reg->mem)
+
+\ ---------- Opcodes
+
+ HEX
+
+ 37  1MI AAA     D5  2MI AAD     D4  2MI AAM     3F  1MI AAS
+0 10 13MI ADC  0 00 13MI ADD   2 20 13MI AND  9A E8 11MI CALL
+ 98  1MI CBW     F8  1MI CLC     FC  1MI CLD     FA  1MI CLI
+ F5  1MI CMC   0 38 13MI CMP     A6  5MI CMPS    99  1MI CWD
+ 27  1MI DAA     2F  1MI DAS     08  9MI DEC     30  7MI DIV
+       ( ESC )   F4  1MI HLT     38  7MI IDIV    28  7MI IMUL
+ E4  8MI IN      00  9MI INC           ( INT )  0CE  1MI INTO
+0CF  1MI IRET
+
+ 9F  1MI LAHF
+ C5  4MI LDS     8D  4MI LEA     C4  4MI LES     F0  1MI LOCK
+0AC  5MI LODS    E2  3MI LOOP    E1  3MI LOOPE   E0  3MI LOOPNE
+       ( MOV )   0A4  5MI MOVS    20  7MI MUL     18  7MI NEG
+ 90  1MI NOP      10  7MI NOT   2 08 13MI OR      E6  8MI OUT
+            8F 07 58 12MI POP     9D  1MI POPF
+           0FF 36 50 12MI PUSH    9C  1MI PUSHF
+ 10 10MI RCL      18 10MI RCR
+ F3  1MI REP      F2  1MI REPNE   F3  1MI REPE
+ C3 14MI RET      00 10MI ROL      8 10MI ROR     9E  1MI SAHF
+ 38 10MI SAR    0 18 13MI SBB    0AE  5MI SCAS          ( SEG )
+ 20 10MI SHL      28 10MI SHR     F9  1MI STC     FD  1MI STD
+ FB  1MI STI     0AA  5MI STOS  0 28 13MI SUB           ( TEST )
+ 9B  1MI WAIT           ( XCHG )  D7  1MI XLAT  2 30 13MI XOR
+ C2 14MI +RET
+  EA E9 11MI JMP
+
+
+
+70  3MI JO
+71  3MI JNO
+72  3MI JB      72  3MI JC
+73  3MI JAE     73  3MI JNC
+74  3MI JE      74  3MI JZ
+75  3MI JNE     75  3MI JNZ
+76  3MI JBE
+77  3MI JA      77  3MI JNBE
+78  3MI JS
+79  3MI JNS
+7A  3MI JPE
+7B  3MI JPO
+7C  3MI JL      7C 3MI JNGE
+7D  3MI JGE     7D 3MI JNL
+7E  3MI JLE     7E 3MI JNG
+7F  3MI JG      7F 3MI JNLE
+E3  3MI JCXZ
+EB  3MI JU
+
+DECIMAL
+
+\ ---------- READY  Macros
+
+: READY   \ initializes local labels and switches.
+   FWDS 2 CELLS + DUP FWDS 2!  MXL# 2 * CELLS + FWDS CELL+ 2!
+   BWDS MXL# CELLS ERASE
+   0 FAR= 2!  WORD  ASSEMBLER ;
+
+\ ******************************** WARNING **********************************
+\ you MUST now always end code definitions with the MACRO NEXT. to get back
+\ to Forth.  This way you can write pure assembler if you want.
+
+: END-CODE
+            (CONTEXT) CONTEXT @&! ( END-CODE ) \ < --BIG CHANGE IS HERE!
+            ?CSP ;
+
+\ ****************************************************************************
+
+
+\ hsf next macro
+: NEXT,
+            LODS
+      DI AX XCHG
+       [DI]  JMP  ;
+
+FORTH DEFINITIONS
+VARIABLE (CONTEXT)          \ temp storage for context vocabulary
+
+: (CODE)    ( -- )                  \ changed to clear the jump table automatically
+            CONTEXT (CONTEXT) @&!
+            [COMPILE] ASSEMBLER ;
+
+:  CODE  (CODE)            CODE [ ASSEMBLER ]  ;
+
+: ,CODE  (CODE)           ,CODE [ ASSEMBLER ] ;
+
+: ;CODE  (CODE) [COMPILE] ;CODE [ ASSEMBLER ]  ;  IMMEDIATE
+
+FORTH DEFINITIONS
+
+

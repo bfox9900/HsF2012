@@ -1,0 +1,74 @@
+\ defer.hsf taken from VECTORS file of Havard Softworks.
+\ changed TO word from HSForth to IS.  This is common usage in 2005
+
+\ Installed ?defer into Defer to catch un-defined DEFERed words
+\ replaced "2' with Cell in <IS>    Oct 12 2014
+\ replaced CELL+ with >BODY in IS definition
+\ Jul 7 2016 added DEFER! DEFER@ from Forth 2012 standard
+\            changed IS to use DEFER!
+
+ONLY FORTH ALSO DEFINITIONS
+
+CODE <IS>                                      \ 'IS' runtime action
+        DI [SI]    MOV.                        \ move contents at instruction pointer into W (it's a cfa)
+        CELL +[DI] BX MOV.                     \ move BX register contents to memory at CFA+cell (PFA)
+        BX         POP.                        \ refill BX from stack
+        SI INC. SI INC.                        \ move instruction pointer to next cell
+        NEXT.
+END-CODE
+
+\ FORTH 2012 additions
+
+: DEFER!  ( xt cfa -- )  >BODY ! ;
+: DEFER@  ( 'deferred -- xt)  >BODY @ ;
+
+: ACTION-OF
+   STATE @ IF
+     POSTPONE ['] POSTPONE DEFER@
+   ELSE
+     ' DEFER@
+   THEN ; IMMEDIATE
+
+\ NOTE: for some reason POSTPONE does not work in this word... need to fix
+: IS
+        STATE @                                \ compiling?
+        IF    COMPILE <IS>                     \ yes so compile the <IS> word
+        ELSE  [COMPILE] '  DEFER!              \ interpreting so lookup the word, get the code address and store the exectution token in it
+        THEN ; IMMEDIATE
+
+
+: ?DEFER  ( -- ) true abort" undefined DEFER"  ;
+
+: DEFER
+        CREATE  ['] ?defer ,                   \ by default store ?defer as the action of a deferred word.  It will halt if not re-defined later
+        ;CODE
+            DI CELL +[DI] MOV.
+           [DI] JMPI.
+        END-CODE
+
+EXIT
+
+\ Usage
+
+DEFER FOO
+
+: BAR ." This is Bar" ;
+
+' BAR is FOO     \ now FOO will do BAR's code
+
+
+\ Jim's old machine code .............................
+
+\ CODE <IS>
+\        <% 8B3C  895D02  5B 46 46 %>
+\        NEXT.
+\ END-CODE
+
+
+: DEFER
+        CREATE    CFA' NEXT ,
+        ;CODE <% 8B7D02  FF25 %> ?CSP
+
+
+
+

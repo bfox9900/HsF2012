@@ -1,0 +1,270 @@
+\ DSTRINGS   DYNAMIC STRING ALLOCATION COPYRIGHT 1986 HARVARD SOFTWORKS
+
+[undefined] $FINDL
+[if]
+        include strings5.hsf
+[then]
+
+HEX
+
+\ String seg will terminate with one byte string  ctrlZ
+\ MUST initialize $SEG to descriptor for pure string seg, which may extend to
+\ end of memory, ie past seg boundary.
+
+\ Top offset kept in   $SEG @ 4I@       Boosted para# in  $SEG @ 6I@
+\ Force para# to 32k boundary and offset to top or bottom 32k ( para# offset )
+\  Note:  xxxx$L words refer to the dynamic string segment pointed to be $SEG
+\  Abreviated words usually use indices; full name commands, addresses.
+
+code l32k   ( seg offset - seg32k offset )
+            ax pop.
+            cx ax mov.
+            cx f000 iw and.
+            ax ax add.
+            ax ax add.
+            ax ax add.
+            ax ax add.
+            jns l32k.
+            ah 7f ib and.
+            ch 08 ib add.
+ @@ l32k.   bx ax add.
+            js h32k.
+            jnc done.
+            ch 10 ib add.
+            jmps done.
+ @@ h32k.   bh 7f ib and.
+            ch 08 ib add.
+ @@ done.   cx push.
+            next.
+end-code
+
+code h32k ( seg offset - seg32k offset )
+            ax pop.
+            cx ax mov.
+            cx f000 iw and.
+            ax ax add.
+            ax ax add.
+            ax ax add.
+            ax ax add.
+            jns l32k.
+            ah 7f ib and.
+            ch 08 ib add.
+ @@ l32k.   bx ax add.
+            js   done.
+            jnc noc.
+            ch 10 ib add.
+            jmps done.
+ @@ noc.    bh 80 ib add.
+            ch 08 ib sub.
+ @@ done.   cx push.
+            next.
+end-code
+
+cr ." code passed"
+
+LISTS USER $SEG
+
+: MAKE-$SEG ( segdesc -- )
+        DUP@  1A1A.0100 ROT 0 2!L  $SEG ! ;
+
+: NEXT$L ( seg1 ofst1 -- seg2 ofst2 )
+        COUNTL + SPLIT 16* ROT + SWAP ;
+
+: +NTH$L ( para#1 offset1 index1  index2  --  para#2 offset2 index2 )
+            swap 0 -rot
+            do
+                drop  2dup @l 1a01 -
+                if   next$l i 1+
+                else i leave
+                then
+            loop ;
+
+:  NTH$L    ( index -- para# offset index ) >R THE $SEG  @  0  0  R> +NTH$L ;
+
+: .NTH$L    ( index -- )  NTH$L DROP $.L ;
+
+: LAST$L    7FFF NTH$L     ;
+
+: +FIND$L ( $adr   seg ofst indxlo  indxhi  -- $adr  seg ofst index   flag )
+            SWAP 0 0 2SWAP
+            DO 2DROP   2DUP 5 PICK -ROT 2DUP COUNTL + NIP $FINDL
+               IF
+                    2DROP  I LEAVE  -1
+               ELSE
+                    2DROP  I DUP 1+ +NTH$L  I =
+                    IF  I LEAVE   0
+                    ELSE  I 0
+                    THEN
+               THEN
+            LOOP ;
+
+cr ." +find$l passed"
+
+: FIND$L  ( $adr -- seg ofst index  flag )
+        THE $SEG @ 0 0 7FFF  +FIND$L ;
+
+
+: FIND$L= ( $adr -- seg ofst index  flag )
+        THE $SEG @ 0 0 7FFF
+        BEGIN
+           +FIND$L  DUP
+           0= IF EXIT
+           THEN    Q>R  DUPC@  I I' C@L XOR
+        WHILE
+            TR> 1 +NTH$L R>
+        REPEAT
+        QR> ;
+\
+: SLIDE>    ( startseg startoffset  stopseg stopoffset  distance  -- )
+        DUP 0>
+        IF   >R  L32K 2>R  L32K  OVER R@  =
+            IF 2DUP   RDROP  DUP R> 2DUP U<
+               IF  - NEGATE  R> SWAP >R  + R>  <CMOVEL
+               ELSE  RDROP 2DROP 2DROP 2DROP
+               THEN
+            ELSE OVER R@ U<
+                  IF    R@ 0    2R>  R@ SWAP   3 PICK >R <CMOVEL
+                        BEGIN  OVER R> 0800 -  DUP>R   U<
+                        WHILE  R@ 0    DR@     32K    <CMOVEL
+                        REPEAT
+                        DUP 32K - NEGATE  2R> 4 PICK +  ROT <CMOVEL
+                   ELSE   2DROP RDROP RDROP RDROP
+                   THEN
+            THEN
+         ELSE DROP 2DROP 2DROP
+         THEN ;
+
+: SLIDE<    ( startseg startoffset  stopseg stopoffset  distance  -- )
+   DUP 0> IF
+            >R  H32K 2>R  H32K  OVER R@  =
+            IF 2DUP   RDROP  DUP R> 2DUP U<
+                    IF  - NEGATE  R> SWAP >R  + 2SWAP R>   CMOVEL
+                    ELSE  RDROP 2DROP 2DROP 2DROP
+                    THEN
+
+            ELSE    OVER R@ U<
+                    IF   2DUP   2DUP J +   DUP 0<
+                    IF 2SWAP   3 PICK NEGATE CMOVEL
+                    ELSE QDROP
+                    THEN DROP
+
+                    BEGIN  0800 +   DUP R@   U<
+                    WHILE  DUP 32K 2DUP J  -     32K   CMOVEL
+                    REPEAT
+                    32K    R>  32K
+                    I' -  R> 32K - CMOVEL RDROP
+            ELSE   2DROP RDROP RDROP RDROP
+        THEN
+   THEN ELSE DROP 2DROP 2DROP THEN ;
+
+
+: ADD$L ( adr$ -- index )
+        PAD $! 1A01 PAD COUNT DUP>R + !
+        LISTS @ PAD  7FFF NTH$L R> SWAP >R 3 + CMOVEL R> ;
+
+
+: ?NTH$L ( index -- seg ofst nchar )
+         NTH$L DROP 2DUP @L 1A01 = ABORT" $Index past end"   2DUP C@L ;
+
+
+: SLIDER ( seg ofst dist -- seg1 ofst1   seg1 ofst1 seg2 ofst2 dist )
+        >R 2DUP   2DUP 0 7FFF +NTH$L DROP cell+ R> ;
+
+
+
+: REP$L ( adr$ index -- )
+        LISTS @ -ROT  ?NTH$L  4 PICK C@  2DUP =
+        IF
+           DROP CMOVEL
+        ELSE
+           DUP>R -    DUP 0<
+           IF ABS SLIDER SLIDE> R> 1+ CMOVEL
+           ELSE SLIDER SLIDE< R> 1+ CMOVEL
+           THEN
+        THEN ;
+
+0 $variable null$
+
+: CLR$L  ( index -- )  NULL$ SWAP REP$L ;
+\
+
+: INS$L  ( adr$ index -- )
+        LISTS @ -ROT  NTH$L  DROP
+        3 PICK C@ 1+ DUP>R SLIDER SLIDE>  R>   CMOVEL ;
+
+
+: /ADD$L ( adr$ -- index )
+        >R LISTS @ R@    THE $SEG @ 0 DUP>R
+         BEGIN
+           2DUP 1+ LISTS @ I' COUNT $<>L  0< >R 2DUP @L 1A01 <> R> AND
+         WHILE
+           NEXT$L 1 +>R
+         REPEAT
+         3 PICK C@ 1+ DUP>R SLIDER SLIDE> R> CMOVEL R> RDROP ;
+
+: DEL$L ( index -- )
+        ?NTH$L    1+ SLIDER SLIDE<    2DROP  ;
+
+: INSERT$L  ( spara# soffset  dpara# doffset -- )
+        2OVER C@L 1+  DUP>R SLIDER SLIDE> R> CMOVEL ;
+
+: DELETE$L  ( para# offset -- )
+        2DUP C@L 1+ SLIDER SLIDE< 2DROP ;
+
+
+: REPLACE$L ( spara# soffset  dpara# doffset -- )
+        2DUP C@L >R   2OVER C@L R>    2DUP =
+        IF DROP CMOVEL
+        ELSE    DUP>R  - DUP 0<
+                IF ABS SLIDER SLIDE> R> 1+ CMOVEL
+                ELSE SLIDER SLIDE< R> 1+ CMOVEL
+                THEN
+        THEN ;
+
+: CLEAR$L    ( para# offset -- )
+        LISTS @ NULL$ 2SWAP REPLACE$L ;
+
+
+: EXCHANGE$L ( lowpara# lowoffset  hipara# hioffset -- )
+        2OVER 2OVER $@L  2SWAP REPLACE$L  LISTS @ PAD 2SWAP REPLACE$L ;
+
+\
+: SAVE-$SEG  ( adr$Z -- )  MKFILE HANDLE !
+        LAST$L DROP cell+ 2* s>d  ROT THE $SEG @ - 20 U*  D+ SWAP 1 lshift
+        THE $SEG @  ROT ?DUP
+        IF 0 DO
+                DUP 0 32K HWRITE 0800 +
+             LOOP
+        THEN  0 ROT HWRITE  THE HANDLE CLOSEH ;
+
+: GET-$SEG   ( adr$Z -- )
+        OPEN-R HANDLE !
+        THE $SEG @
+        BEGIN  DUP 0 32K THE HANDLE READH 32K =
+        WHILE 0800 +
+        REPEAT  DROP THE HANDLE CLOSEH ;
+
+: WRITE-$SEG  ( adrZ -- )
+        MAKE-OUTPUT  >FILE
+        THE $SEG @  0
+        BEGIN  NEXT$L 2DUP @L 1A01 <>
+        WHILE  2DUP $.L CR
+        REPEAT
+        2DROP   CRT CLOSE-OUTPUT ;
+
+DECIMAL 
+
+EXIT
+
+\ Jim Kalihan likes to use machine code. I don't
+CODE L32K <% 58 89C1 81E100F0 01C0 01C0 01C0 01C0 7906 80E47F 80C508 %>
+          <% 01C3 7807 730B 80C510 EB06 80E77F 80C508 51 %>
+           next.
+end-code
+
+
+CODE H32K <% 58 89C1 81E100F0 01C0 01C0  01C0 01C0 7906 80E4 7F80 %>
+          <% C508 01C3 780D 7305 80C510 EB06 80C780 80ED08 51 %>
+          next.
+end-code
+

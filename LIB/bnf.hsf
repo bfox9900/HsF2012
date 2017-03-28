@@ -1,0 +1,204 @@
+ \ BNF Parser                                (c) 1988 B. J. Rodriguez
+ VARIABLE SUCCESS
+
+\ HS/Forth does not have 'DP'
+ LISTS  2 CELLS+ CONSTANT DP      \ It's part of the segment structure
+
+ : <BNF
+        SUCCESS @
+        IF  R> >IN @ >R DP @ >R  >R
+        ELSE  R> DROP
+        THEN ;
+
+
+ : BNF>
+        SUCCESS @
+        IF  R>  R> R> 2DROP   >R
+        ELSE  R>  R> DP ! R> >IN !  >R
+        THEN ;
+
+ : |
+        SUCCESS @
+        IF      R> R> R> 2DROP DROP
+
+        ELSE    R> R> R> 2DUP >R >R >IN ! DP !
+                1 SUCCESS !  >R
+        THEN ;
+
+ : BNF:   [COMPILE] :  COMPILE <BNF ; IMMEDIATE
+
+ : ;BNF   COMPILE BNF> [COMPILE] ; ; IMMEDIATE
+
+ : @TOKEN ( - n)   >IN @ TIB @ + C@ ;
+
+ : +TOKEN ( f)    IF 1 >IN +! THEN ;
+
+ : =TOKEN ( n)
+        SUCCESS @
+        IF @TOKEN =  DUP SUCCESS ! +TOKEN
+        ELSE DROP
+        THEN ;
+
+ : TOKEN ( n)
+        create C,
+        DOES> ( a)  C@ =TOKEN ;
+
+
+0 [IF]
+\ =====================================================================
+\ BNF Parser Example #1 - pattern recog.             18 9 88 bjr 19:41
+\ from Aho & Ullman, Principles of Compiler Design, p.137
+\ this grammar recognizes strings having balanced parentheses
+
+HEX    28 TOKEN '('      29 TOKEN ')'      0 TOKEN <EOL>
+
+BNF: <CHAR>
+        @TOKEN DUP
+        [CHAR] *  [CHAR] ~ WITHIN? SWAP
+        [CTRL] A  [CTRL] Z WITHIN? OR
+        DUP SUCCESS ! +TOKEN
+;BNF
+
+BNF: <S> '(' RECURSE ')' RECURSE   |   <CHAR> RECURSE  | ;BNF
+
+: PARSE
+        1 SUCCESS !    <S> <EOL>
+        CR SUCCESS @
+        IF ." Successful "
+        ELSE ." Failed "
+        THEN ;
+
+\  BNF Parser Example    #2  - infix notation        18 9 88 bjr 14:54
+HEX     2B TOKEN   '+'    2D  TOKEN '-'     2A  TOKEN  '*'     2F TOKEN '/'
+        28 TOKEN   '('    29  TOKEN ')'     5E  TOKEN  '^'
+        30 TOKEN   '0'    31  TOKEN '1'     32  TOKEN  '2'     33 TOKEN '3'
+        34 TOKEN   '4'    35  TOKEN '5'     36  TOKEN  '6'     37 TOKEN '7'
+        38 TOKEN   '8'    39  TOKEN '9'   CHAR . TOKEN  <EOL>
+
+BNF: <DIGIT>
+        '0'  | '1' | '2' |  '3' | '4' | '5' | '6' | '7' |  '8' | '9' ;BNF
+
+BNF: <NUMBER>    <DIGIT> RECURSE  |  <DIGIT> ;BNF
+
+[THEN]
+
+
+-1 [if]
+\ =====================================================================
+ \ BNF Parser Example     #2 - infix notation         18 9 88 bjr 15:30
+ \ from Aho & Ullman,     Principles of Compiler Design, pp.135,178
+ : [HERE]     HERE 0 ,   -2 CSP +!  ;    IMMEDIATE
+
+ BNF:   <ELEMENT>       '(' [HERE]  ')'  |    <NUMBER> ;BNF
+
+ BNF:   <PRIMARY>       '-' RECURSE      |   <ELEMENT> ;BNF
+
+ BNF:   <FACTOR>        <PRIMARY> '^' RECURSE | <PRIMARY> ;BNF
+
+ BNF:   <T'>            '*' <FACTOR> RECURSE | '/' <FACTOR> RECURSE ;BNF
+
+ BNF:   <TERM>          <FACTOR> <T'> ;BNF
+
+ BNF:   <E'>            '+' <TERM> RECURSE | '-' <TERM> RECURSE   ;BNF
+
+ BNF:  <EXPRESSION>     <TERM> <E'> ;BNF
+
+ ' <EXPRESSION> SWAP !      \ fix the recursion in <ELEMENT>
+
+ : PARSE
+        TRUE SUCCESS !
+        <EXPRESSION> <EOL>
+        CR SUCCESS @
+        IF  ." Successful "
+        ELSE ." Failed "
+        THEN ;
+
+[THEN]
+
+
+
+0 [IF]
+\ ==========================================================================
+\ Example #3
+  HEX   2B TOKEN   '+'    2D  TOKEN '-'     2A  TOKEN  '*'     2F TOKEN '/'
+        28 TOKEN   '('    29  TOKEN ')'     5E  TOKEN  '^'
+        30 TOKEN   '0'    31  TOKEN '1'     32  TOKEN  '2'     33 TOKEN '3'
+        34 TOKEN   '4'    35  TOKEN '5'     36  TOKEN  '6'     37 TOKEN '7'
+        38 TOKEN   '8'    39  TOKEN '9'       0 TOKEN  <EOL>
+
+ BNF: {DIGIT}
+        '0'  | '1' | '2' |  '3' | '4' | '5' | '6' | '7' |  '8' | '9' ;BNF
+
+ BNF: <DIGIT>       @TOKEN {DIGIT} C, ;BNF
+
+ BNF: <NUMBER>      <DIGIT> <NUMBER>    |    <DIGIT> ;BNF
+
+\ : (,")    R COUNT DUP 1+ R> + >R       HERE SWAP DUP ALLOT CMOVE ;
+\ : ,"    COMPILE (,") 22 WORD HERE       C@ 1+ ALLOT  ;    IMMEDIATE
+
+
+ \  BNF Example #3       code generation               18 9 88 bjr 21:57
+ :  [HERE]     HERE 0  ,   -2 CSP +!  ;    IMMEDIATE
+
+ BNF: <ELEMENT>         '('   [HERE]  ')'  |   <NUMBER> BL C, ;BNF
+
+ BNF: <PRIMARY>      '-'  <PRIMARY>  ," MINUS " |    <ELEMENT> ;BNF
+
+ BNF: <FACTOR>      <PRIMARY> '^' <FACTOR> ," POWER " |  <PRIMARY> ;BNF
+
+ BNF: <T'>          '*' <FACTOR>  ," * "  <T'>  |  '/' <FACTOR> ," / " <T'> |  ;BNF
+
+ BNF: <TERM>     <FACTOR> <T'>       ;BNF
+
+ BNF: <E'>   '+'    <TERM>    ." + "   <E'> |'-' <TERM> ." - "   <E'> | ;BNF
+
+
+
+
+\ BNF Example #3 - code generation                   18 9 88 bjr 21:57
+
+ BNF: <EXPRESSION>       <TERM> <E'> ;BNF
+  ' <EXPRESSION> SWAP             \ fix the recursion in <ELEMENT>
+
+: PARSE
+        HERE 1 SUCCESS !
+        <EXPRESSION> <EOL>
+        CR SUCCESS @
+        IF HERE OVER - DUP MINUS ALLOT TYPE
+        ELSE ." Failed"
+        THEN ;
+
+[THEN]
+
+
+
+exit
+
+\ BNF Parser - 8086 assembler version       (c) 1988 B. J. Rodriguez
+ 0 VARIABLE SUCCESS
+ CODE <BNF    -1 # SUCCESS #) TEST, NE IF,      \ if passing,
+       4 # RP SUB,    0FDFE # W MOV, ( U ptr)   \     checkpoint
+       ' IN @ [W]  AX MOV, AX 2 [RP] MOV,       \     and continue
+       ' DP @ [W]  AX MOV, AX 0 [RP] MOV,
+    ELSE, 0 [RP] IP MOV,  RP INC,  RP INC,      \  else, exit now!
+    THEN, NEXT
+
+ CODE BNF>    -1 # SUCCESS #) TEST, EQ IF,      \  if failing,
+        0FDFE # W MOV, ( U ptr)                  \     backtrack to
+        0 [RP] AX MOV, AX ' DP @ [W] MOV,        \     checkpoint
+        2 [RP] AX MOV, AX ' IN @ [W] MOV,
+     THEN, 4 # RP ADD, NEXT                      \  discard checkpoint
+                                                 \     and continue
+
+                                                             Scr#        5
+ CODE |   -1 # SUCCESS #) TEST, NE IF,        \ if passing,
+       4 # RP ADD,                            \   discard checkpoint
+       0 [RP] IP MOV, RP INC, RP INC,         \   and exit now
+    ELSE, 0FDFE # W MOV,                      \ else, backtrack,
+       0 [RP] AX MOV,    AX ' DP @ [W] MOV,   \   leaving checkpoint
+       2 [RP] AX MOV,    AX ' IN @ [W] MOV,   \   stacked, and
+       SUCCESS #) INC,                        \   set true for next
+    THEN, NEXT                                \   alternate
+
+
+

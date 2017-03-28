@@ -1,0 +1,37 @@
+\ hilite      to change attribute of text on screen easily
+HEX
+
+[undefined] RED  [if]   include color.hsf  [then]
+
+
+hex
+1000 constant vpage-size
+  50 constant scr-width
+
+: hilite  ( watrc len -- )
+        2*
+        page#@ vpage-size * crt-base +  es!     \ calc. video ram address
+        row,col swap scr-width * + 2* 1+        \ calc. cursor address
+        swap over + swap                        \ loop_index=video address
+        do
+            dup i c!e                           \ place watrc into ram
+        2 +loop                                 \ increment by 2
+        drop ;                                  \ clean up after yerself!
+
+: un-hilite  ( len -- )  watrc swap hilite ;
+
+
+code nibswap  ( $af -- $fa )
+        ax bx mov.
+        cl 4 ib mov.
+        bx 4 sar.
+        ax 4 shl.
+        bx ax or.
+        bh bh xor.
+end-code
+
+
+: rev-watrs   ( 00001111 -- 11110000 )
+        watrs nibswap ;
+
+

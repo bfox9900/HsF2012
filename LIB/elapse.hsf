@@ -1,0 +1,39 @@
+\ elapse.hsf  time measurment words for hs/forth
+\ Thanks to Tom Zimmer for the good ideas.
+\ 08MAR91  Brian Fox London Ontario Canada
+
+DECIMAL
+
+: ##   ( n -- )  0 <# # # #> TYPE ;
+: ##:  ( n -- )  0 <# [CHAR] : HOLD  # # #> TYPE ;
+
+: .hh:mm:ss.00  ( h S M H -- )  ##: ##: ## [char] . emit ## ;
+
+CREATE START_TIME  2 CELLS ALLOT
+
+
+ : TIME>D  ( h s m h -- d)     \ convert time format to 32bit int.
+        36 * 1000  M*  2>R     \ multiply Hours x 36000  & push
+        6000  M*  2>R          \ multiply minutes x 6000 $ push
+        100 * +                \ multiply seconds x 100 + hundredths
+        S>D 2R> D+             \ Add seconds & hundredths to Total
+        2R> D+ ;               \ add hours to the total
+
+: D>TIME  ( d -- h s m h )                      \ convert 32 bit int. to time
+        36000 U/MOD  ( rem ) ( quot) >R         \ push hours
+        6000 /MOD      ( quot) >R               \ push minutes
+        100  /MOD                               \ calculate seconds & hundredths
+        R> R> ;                                 \ pop minutes, pop hours
+
+
+: TIMER-RESET    TIME@ TIME>D START_TIME 2! ;          \ RESET TIMER
+
+: TIME-ELAPSED  ( -- d ) TIME@ TIME>D START_TIME 2@ D- ;
+
+: <.ELAPSED>    TIME-ELAPSED D>TIME .hh:mm:ss.00 ;
+
+: .ELAPSED      CR ." Elapsed time =" <.ELAPSED> ;
+
+: ELAPSE ( -- <forth word> )                   \ time any Forth word
+                TIMER-RESET INTERPRET .ELAPSED ;
+

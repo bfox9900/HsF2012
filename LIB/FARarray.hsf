@@ -1,0 +1,99 @@
+\ FAR String arrays using FALLOCAT.hsf
+
+\ Since I have gone to the trouble of creating ALLOCATE et al. 
+\ for ANS Forth I thought it would be good to use the damned
+\ thing for something.
+
+\ These arrays are created in the HEAP and can even be
+\ destroyed and created at run-time but not easily
+
+\ ** USAGE EXAMPLE **
+\ creating:  1000 32 far-array: NAMES
+\ storing :  c" Brian Fox" 439  NAMES []  $!L
+\ fetching:  439 box [] countl typel
+
+
+
+INCLUDE FALLOCATE.HSF
+
+\ Explanation of FAR array data structure
+
+\           create a header in lists segment      |  |        FAR Segment memory holds the array data
+
+\    [--------------Array descriptor--------------]  [---------------------  data -----------------------]
+\     base-addr, strlength, maxstrings, counter,  |  | len-byte , bytes... , len-byte , bytes ..., etc...
+\         v                                          ^
+\         |                                          |
+\         >-->- base-address is in FAR segment--------
+
+decimal
+
+: FAR-array: ( #items, size -- header)
+          create                                  \ create the name in Forth dictionary
+                 2dup swap 1+ swap                \ add 1 extra element to no. of items
+                 * FARmalloc ,                    \ allocate the bytes. Store the HEAP NODE in first field of header
+                   ,                              \ compile length
+                   ,                              \ compile # of strings
+                 0 ,                              \ compile a cell to keep track of # of items (OPTIONAL)
+          does> ;                                 \ HSForth needs DOES> to properly allot the memory after create
+
+
+
+\ create named access to the array header cells
+: :base   ( array-desc -- addr)  @ ;
+: :items  ( array-desc -- addr)  [ 3 cells ] literal + ;
+: :maxfld ( array-desc -- addr)  [ 2 cells ] literal + ;
+: :fldlen ( array-desc -- addr)  cell+ ;
+: :size   ( array-desc -- n)    :base >size@ ;          \ get allocation size from the HEAP node. cool!
+
+\ matrix calculator widget
+: []      ( n array-desc -- paragraph addr)             \ returns a 32 bit 2 stack item address
+          :base dup :fldlen @ rot * +  HEAP@ SWAP ;     \ calculate nth item address in the array
+
+\ methods to act on an array-descriptor
+: []!     ( n array-desc -- ) [] !l ;
+: []@     ( array-desc -- n ) [] @l ;
+: []$@    ( array-desc -- $)  [] new:top$ $@l ;
+
+: :empty  ( array-desc -- )  heap@ swap  dup :items off   dup :base  swap :size erasel ;
+
+: :add$   ( $ array-desc -- )
+          dup >r :items @ r@ ( -- $  ndx array desc )
+          []                 ( -- $  para addr )
+          $!l                ( -- )
+          r> :items 1+! ;    \ increment the counter in the array descriptor
+
+
+exit
+
+: :readfile 
+
+
+\ hash table example
+
+73 constant tabsize  \ must be a prime number
+
+tabsize 33 FAR-array: keywords
+
+: HASH#    ( $ -- n)
+          0 -ROT
+          count BOUNDS DO  I C@ + LOOP  tabsize mod ;
+
+: testbin  ( n -- n ) 
+           begin
+              dup  keywords [] C@L 0>
+           while
+             1+
+             DUP TABSIZE > abort" no empty bins"
+           repeat ;
+
+
+: :hash!   ( $ -- ) 2dup hash# TESTBIN keywords [] $!L ;
+
+: :find    ( $ -- ?) HASH#  testbin 0> ;
+
+
+
+
+
+

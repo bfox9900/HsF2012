@@ -1,0 +1,64 @@
+\ DATES.FOX     all kinds of date formatting words    02MAR91  FOX
+\ changed to create strings for more flexibility
+
+DECIMAL
+
+\ "This is an algorithm I've carried with me for 35 years, originally
+\  in Assembler and Fortran II."   Wil Baden ?
+\  It counts the number of days from March 1, 1900.
+
+: UNDER+  ( a b c -- a+c b )  ROT + SWAP ;
+
+: cday                        ( dd mm yyyy -- century_day )
+      -3 under+    OVER  
+      0< IF    12 under+   1-    THEN
+      1900 -   1461 4 */   SWAP  306 *  5 +  10 /  + +  ;
+
+
+: dow  ( cday -- day_of_week )
+         2 + 7 MOD 1+ ;             (     7 is Sunday.  Gentile style)
+
+
+( : TIME&DOW&DATE ( -- year month day day-of-week hour minutes seconds )
+
+( How about TIME&DATE&DOW ? )
+
+
+: 3DUP ( a b c --  a b c a b c )  DUP 2OVER ROT ;
+
+\ inline version for HSF2000 didn't work ?
+\ code 3dup
+\    inline: dup
+\    inline: 2over
+\    inline: rot
+\    next
+\ end-code
+
+: TIME&DATE&DOW ( -- sec min hour day month year day_of_week )
+        3DUP cday dow
+;
+
+: ##   ( n -- )  0 <# # # #> TYPE ;
+: #### ( n -- )  0 <# # # # # #> TYPE ;
+: ##:  ( n -- )  0 <# [CHAR] : HOLD  # # #> TYPE ;
+
+: .hh:mm:ss  ( h s m -- )  ##: ##: ## ;
+
+CREATE MONTH
+  ," " ," Jan" ," Feb" ," Mar" ," Apr" ," May" ," Jun"
+       ," Jul" ," Aug" ," Sep" ," Oct" ," Nov" ," Dec"
+
+: ]MONTH   MONTH NTH$ ;
+
+: M/D/Y  ( d,m,y -- )  >R  ## ." /" ## ." /"  R> #### ;
+
+: Y-M-D  ( d,m,y -- )  #### ." -"  ## ." -" ## ;
+
+: D.M.Y  ( d,m,y -- )  >R SWAP  ## ." ." ## ." ."  R> #### ;
+
+: M,D,Y  ( d,m,y, -- )  >R  ]MONTH $. ." ," ##  ." ," R> #### ;
+
+: FORTH-DATE ( d,m,y,-- )  >R SWAP ## ]MONTH $. R> ## ;
+
+
+

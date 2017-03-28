@@ -1,0 +1,76 @@
+( ARRAY.hsf   FORTH integer array. RAM only 19JAN94 FOX )
+\ complete overhaul:
+\ Apr 27 2008,  added inlined primitves to look kinda like Forth Scientific Library
+
+\ these arrays are unique in that they contain a size field that can be used
+\ for run-time error checking
+
+: array:  ( n -- )
+        create  dup , cells allot
+
+        does> ( adr -- ) cell+ ;
+
+: carray: ( n -- )
+        create dup , allot
+
+        does> cell+  ;
+
+: [size]  ( {c}array_name -- n )  cell - @ ;
+
+
+exit
+
+\ array ideas...
+
+code }  ( array indx -- address )
+        inline: cells+
+        inline: +
+        next.
+end-code
+
+code }size
+        inline: cell-
+        inline: @
+        next.
+end-code
+
+
+code }@  ( array indx -- n )
+    inline: +
+    inline: @
+    next.
+end-code
+
+code }c@ ( array indx -- c)
+     inline: +
+     inline: c@
+     next.
+end-code
+
+code }! ( array indx -- )
+        inline: +
+        inline: !
+        next.
+end-code
+
+code }c! ( array indx -- )
+        inline: +
+        inline: c!
+        next.
+end-code
+
+
+
+\ demo code
+500 carray: q{
+
+: fillit
+        q{ dup }size
+        do
+           i  q{ i }c!
+        loop ;
+
+: seeit ( array -- )
+        dup }size  dump ;
+
+

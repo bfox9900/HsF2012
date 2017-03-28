@@ -1,0 +1,60 @@
+\ BORDERS  Basic character boxes for window borders  15MAR91 FOX
+\ some corner characters are wrong now in 2014 with Windows 7 :-0
+
+DECIMAL
+
+[UNDEFINED] RED  [IF]  FLOAD COLOR.HSF  [THEN]
+
+
+\ these words return the values needed to make a BORDER"
+                       \ ul  um  ur  lm  rm  bl  bm  br   COLOR
+\ ---------------------------------------------------------------
+: Single_Box            218 196 191 179 179 192 196 217 ;
+
+: Hor_Double_Box        213 205 184 179 179 212 205 190 ;
+
+: Double_Box            201 205 187 186 186 200 205 188 ;
+
+: Vert_Double_Box       214 196 183 186 186 211 196 189 ;
+
+: Hor_Single_Box        214 196 183 186 186 200 205 188 ;
+
+: Single_Drop_Shadow    218 196 220 179 219 192 220 219 ;
+
+: BORDER-COLOR!  ( watrc cfa-BORDER -- ) DUPC@ + 1+  C! ;
+
+\ **********************************************************
+
+\ test section can be ommitted by replacing TRUE with FALSE
+TRUE [IF]
+
+\ Border tests
+
+0 0 LTGRAY BLUE  FG&BG 10 10 20 50 MAKE-WINDOW WTEST
+
+Single_Drop_Shadow WATRS BORDER" SHADOW Drop Shadow Box"
+Hor_Single_Box     WATRS BORDER" FANCY [þ]"
+Single_Box         WATRS BORDER" SINGLE-TOP Single tops"
+Vert_Double_Box    WATRS BORDER" VERT-DOUBLES Vert. Doubles"
+Single_Box         WATRS BORDER" SINGLES  Singles"
+Hor_Double_Box     WATRS BORDER" HOR-DOUBLE Hor. Doubles"
+
+: PAUSE WIPE ." Press any key..." KEY DROP ;
+
+: GO
+
+  WTEST >W  SHADOW   WIPE
+   ." press enter to see more borders."
+   BEGIN
+        FANCY        PAUSE
+        SINGLE-TOP   PAUSE
+        VERT-DOUBLES PAUSE
+        SINGLES      PAUSE
+        HOR-DOUBLE   PAUSE
+        SHADOW       PAUSE
+        WIPE
+        CR ."  Show them again ?" ?YN
+   0= UNTIL ;
+GO
+ [THEN]
+

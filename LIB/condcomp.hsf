@@ -1,0 +1,131 @@
+\ condcomp.hsf   add ANS/ISO conditional compilation ability to HSF2000
+\ original code taken from ciForth by Albert VanderHorst
+\ Reduced stack noise Brian Fox
+\ this code is magic!
+
+\ Historic Note:
+\  ... interpretive control logic .....      Will Baden - EuroFORML 85
+\        These words add control logic that works outside a colon
+\        definition. It is not fast, but it is a magic system for
+\        providing conditional compilation or execution. When used
+\        with immediate constants, control can be asserted within a
+\        colon definition.
+\
+\        The words [UNDEFINED] or [DEFINED] is used to to determine whether or
+\        not a word already exists. To see what is going on here, you should think
+\        about the uses of the return stack.
+\
+\        Originally presented by Neil Baud aka Will Baden, of Costa Mesa, California,
+\        at the 1985 EuroFORML conference in Germany.
+
+
+\ APR 2008:     added clrssp at end of loop to prevent blowing up string stack during
+\               large pieces of un-compile code.
+\ APR 28 2008:  added another CLRSSP before exit to clean string stack completely
+
+\ July 19, 2015 replaced all $" with c" per ANS Forth 94.  BROKE this code!  pUT IT BACK.
+\               Changed CRLSSP to DROP$ because there is really only 1 element to drop off the string stack
+
+\ MUST HAVE HSF2000 strings.hsf loaded
+
+
+only forth also assembler also forth definitions
+
+\ From ANSI manual.
+: passover
+        1
+        BEGIN                              \ bit of HSF2000 cheating here. UPPER$ puts WORD output string into TOP$ (top of string stack)
+           BL WORD upper$ LEN 0>      \
+        WHILE
+           TOP$ c" [IF]"  $=          \ Now we can reference the string easily as TOP$
+           IF
+               1+
+           ELSE
+               TOP$ c" [ELSE]" $=
+               IF 1- DUP  IF  1+  THEN
+
+               ELSE  TOP$ c" [THEN]" $=  IF 1- THEN
+               THEN
+            THEN
+               ?DUP 0=  IF  DROP$ EXIT   
+               THEN DROP$
+        REPEAT
+        2DROP ;
+
+: [IF] 0= IF passover THEN ; IMMEDIATE
+
+: [ELSE] passover ; IMMEDIATE
+
+: [THEN] ; IMMEDIATE
+
+: [UNDEFINED]  ( -- ? )  FIND  0= ;
+: [DEFINED]    ( -- ? )  FIND  0 <> ;
+
+
+\ test code ************************************
+ CR ." testing [IF] [ELSE] [THEN] directives"
+
+FALSE [IF]
+         TRUE ABORT" '[IF]' Failed!  You should NOT see this line."
+
+      [else]  CR ." [ELSE] worked correctly"
+            true [if] 
+                  true [if]
+                       true [if]
+                            cr ."  Nested 3 [IF]s inside [ELSE] correctly..."
+                            [THEN]
+                       [THEN]
+                  [THEN]
+
+      [THEN]
+
+true [IF]
+        cr  ." '[if]' directive is working properly"
+
+     [ELSE]
+
+        TRUE ABORT" '[IF]' Failed!  You should NOT see this line."
+
+     [THEN]
+
+
+\ test passover large text body
+FALSE [if]
+
+TRUE ABORT" '[IF]' Failed!  You should NOT see this line."
+
+Finding Toronto's better way  ( THIS IS ALL HERE TO CHECK FOR STRING STACK OVERFLOW)
+
+National Post  Published: Monday, April 28, 2008
+On Friday, 65% of Toronto's public transit workers voted down a deal with
+Toronto and union workers walked off the job having thumbed their noses at a
+generous three-year deal that city managers struck with the transit union a week ago.
+Over the weekend, however, Ontario's government passed a law forcing the workers
+back to their jobs. It's a short-term fix that will pacify Toronto's commuters
+in the short run, but do little to fix a broken system.
+
+The deal the workers turned down offered annual pay increases of 3% -- the rate
+of inflation is running at 2% -- and a guarantee that Toronto Transit Commission
+(TTC) drivers would be paid at least as much as their counterparts in
+neighbouring municipalities. City councilors were correct to slam this aspect of
+the offer as irresponsible: Since no one knows what sweetheart deals
+neighbouring municipalities will give their own workers, this guarantee
+essentially amounts to an unknown and unfunded liability for Toronto taxpayers.
+
+Following the Friday evening vote, TTC workers went on strike, breaking their
+own union's promise to give commuters 48 hours notice. The resulting mayhem saw
+thousands of Toronto residents left with no option but to walk for hours to get
+home as taxi companies were overwhelmed by demand. Residents are understandably
+angry -- especially since TTC operators currently take home a very handsome wage
+of $26.58 an hour, plus benefits. They also enjoy the opportunity to increase
+their take-home through over-time -- which is abundantly available because the
+current contract makes it difficult to hire part time staff.
+
+[ELSE]
+
+        cr  ." '[else]' directive skipped large text correctly"
+
+[then]
+
+
+

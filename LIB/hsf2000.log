@@ -1,0 +1,101 @@
+\ HSF2000 project log
+
+Started: Mar 2005
+
+This project was a make work project for me to update my old HS/Forth system
+so that I could more easily compile projects that I found on the web that were
+written in ANS/ISO Forth.
+
+HsForth is a great old system for DOS but the author Jim Kalihan, had a kind of
+attitude that his way was the best.  As a result he choose names that
+were not in common usage in Forth and made HS/Forth quite unique. The underlying
+power of the system was such that with very little effort I was able to create a
+translation file that changed the functionality to the more modern usages.
+
+Assumptions HSF2000
+
+HSF2000 does not create a 100% ANS/ISO compatible system.  What is does is
+creates a system that is close to ANS such that porting projects is much easier.
+
+HSF2000 assumest that the HASH look-up that HS/Forth used is no so important in
+the DOS world of 2005 when processors are running 100 to 1000 times faster than
+the 4.77 MHz 8088 that I first loaded HS/Forth onto.  I therefore no longer
+use any of the conditional compiles that are in the old code.
+
+HSF2000 assumes that all DOS systems in 2005 have 640 of memory!  That is so
+funny to write in 2005.  I rememember when I first got extra memory for my
+IBM AT clone that let me have 1 Mega byte of memory!  wow!
+
+HSF2000 does not adopt the ANS proposal for strings.  (adr u )
+Old style counted PASCAL strings are ok for me but it does make porting code
+much harder.  I may change this in the future.
+
+
+Words in the system that have a new name
+------------------------------------------
+
+synonym find79      find
+synonym 2!          d!
+synonym 2!l         d!l
+synonym 2@          d@
+synonym 2constant   dconstant
+synonym 2variable   dvariable
+synonym 2drop       ddrop
+synonym 2dup        ddup
+synonym 2over       dover
+synonym 2swap       dswap
+synonym 2rot        drot
+synonym nip         pluck
+synonym tuck        under
+synonym off         0!
+synonym align       alignw
+synonym user        user-var
+synonym value       var
+synonym 2literal    dliteral
+synonym key?        kkey?
+synonym ekey>char   s->c
+synonym system      shell         \ usage:  $" dir c:\lib\*.c" system
+synonym at-xy       wcursor!
+synonym source-id   source?       \ careful, this is an hsf 'user-var'
+synonym pc@         p@
+synonym pc!         p!
+synonym '           cfa'
+synonym @++         step
+synonym c@++        cstep
+
+: >number ( $ -- )  number  ;       \ non-standard: uses counted string
+
+
+'The TO DO List'
+-------------------------------------------'
+
+
+Multi Tasker:
+
+1. Get the standard issue MULTITASK.HSF working
+    - compile ok
+    - re-write <yield> in assembler to replace Machine code     done
+    - make it work
+
+
+2. Make a new faster multi-tasker based on Maxforth.
+    - Common stack segment for all tasks means faster context switch
+    - 50% less code!!!
+    - re-write yeild                                            done
+    - init a new task
+    - assign the run time action of a new task
+
+
+3. get On Target working simply for re-building Maxforth Chick counter code.
+
+
+
+mar 20 2005
+
+Added UPPER to WORDS' so that it could find lower case words in dictionarys.
+
+
+Apr 2005
+Added simple support for [IF] and [THEN]  I did not include ELSE.
+
+Added [else] and fixed up many other things  2008.  ( I am bad at loggin changes for a hobby)

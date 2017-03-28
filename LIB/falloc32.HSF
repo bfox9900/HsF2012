@@ -1,0 +1,352 @@
+\ FALLOCAT.HSF
+\ Simple memory allocation in FAR segment for HSForth 2012 BJF Oct 18 2015
+
+\ I have taken the dead simple approach to make the heap work like
+\ Forth dictioary space. It is effectively fixed allocation in a linked list.
+\ If you try to FREE an item that is not the last node it will blow
+\ away the earlier nodes as well. Just like FORGET
+\ If you RESIZE an item that is not the last node you get an ERROR
+
+\ The heap is ALL memory above HSForth and is accessed with 32bit addresses
+\ All memory accesses to the HEAP must use the @E !E words because
+\ they are FAR address.  We have made is simpler by create the word:
+\ HEAP>  which sets the ES register to the HEAP segment.
+\ this makes it relatively painless to use the memory.
+
+\ =========================================================================
+
+\ The HEAP-SEG allows HS/FORTH to use unallocated memory above HS/FORTH
+
+MEMORY 4I@ value HEAP                                 \ heap contains the address ABOVE HSfORTH. See; Init-heap
+                                                      \ select a different heap segment with:  NEWSEG TO HEAP
+
+: >HEAP  ( -- )       heap @ es! ;                    \ stores seg paragraph in ES register.
+                                                      \ WITHIN A DEFINITION ONLY, hsFORTH reverts ES: back to vocabulary in immediate mode
+
+\ usage:    >HEAP VAR1 @E  VAR2 !E                    (transfer from one var to another)
+
+
+\ preamble
+
+HEX
+: TOM   ( -- u ) memory  2I@ ;                          \ top of HEAP segment. TIB is at FFA9
+
+0 CONSTANT BOM   0                                    \ bottom of memory is 0
+
+2 CELLS CONSTANT HHEAD_SIZE                           \ heap header size
+
+2variable AP  ( -- 32addr)                          \ allocation pointer is in the HEAP segment data structure
+
+: AP+!        ( d -- )  AP 2@   D+ AP 2! ;
+: AP++        ( -- )    AP 2@ 1. d+ AP 2! ;
+: AP--        ( -- )    AP 2@ 1. d- AP 2! ;
+
+
+2VARIABLE LASTNODE                                    \ keeps track of the last node created
+
+\ 0800 VALUE GAP                                      \ safety gap between dictionary and allocated memory
+
+: where        ( -- 32addr ) AP 2@ ;                  \ This is WHERE we know there is free memory :-)
+
+: HALLOT      ( n -- )  AP+! ;                        \ like allot, but goes backwards
+
+: heap,       ( n -- )  >HEAP where !L   CELL HALLOT ;
+
+: hlink       ( addr -- )  LASTNODE @ HEAP, HHEAD_SIZE + LASTNODE ! ;
+
+: INIT-HEAP \ build a root node with the words we created
+               0. AP 2!
+               0. HEAP,                                \ create empty memory for root node
+               0. HEAP,                                \ create null link root node
+               0. HEAP,                                \ create null size root node
+              WHERE lastnode 2! ;                      \ record this address as the last node
+
+
+
+\ ERROR constants
+69 CONSTANT ALLOCATE_ERR
+79 CONSTANT HEAP_OVERFLOW
+89 CONSTANT FREE_ERROR
+99 CONSTANT RESIZE_ERROR
+
+: US>D    ( u -- d ) 0  ;                                \ convert u as an unsigned int to double int
+
+: toobig?    ( 32addr -- ? )                              \ true if too big,
+               where us>d d+  TOM  D> ;         \ check if we trying to allocate past TOP of the segment
+
+\ 14.6.1.0707 ALLOCATE ( u -- a-addr ior )
+\
+\ Allocate u address units of contiguous data space. The data-space pointer is
+\ unaffected by this operation. The initial content of the allocated space is
+\ undefined.
+
+\ If the allocation succeeds, a-addr is the aligned starting address
+\ of the allocated space and ior is zero.
+
+\ If the operation fails, a-addr does not represent a valid address and ior
+\ is the implementation-defined I/O result code.
+
+\ NOTE: a-addr is the actual address of memory you use to put things in.
+\       To get the link to the previous item use  "a-ddr >PREV"
+
+: ALLOCATE   ( u -- a-addr ior )
+             ALIGNED                                      \ only accept even cell addresses
+             DUP  toobig?
+             if
+                  ALLOCATE_ERR
+             ELSE
+                   where hlink                            \ link back to the old NODE from this new place, update lastnode
+             ( u ) dup HEAP,                              \ record the size in the node
+                   hallot                                 \ add U to current pointer and allot the space in the heap
+                   LASTNODE @ 0                           \ return the HEAP pointer and 0 flag
+             THEN ;
+
+\ Node data structure description
+\  Each node in the heap is just a LINK backwards to the previous link,
+\ followed by 1 cell that contains the size of the node. The root node = 0,0,0 (link,size,data)
+
+\  $0000                                                                             Node 1                 ... $FFFF
+\    --------------------------------------------------------- --------------------------------------------------
+\    |  root link = 0  |  root size=0   |  root data = 0 |     Link     |   Size       |   DATA bytes....
+\    ------------------------------------------------------------------------------------------------------------
+\          ^                                                        |                     ^
+\          |                                                        |                     |
+\          |                                                        |                  node Ptr point to data
+\          |                                                        |
+\          ^------<----------------------------<------------------- <
+\      *pointS to this                                           *this node
+
+
+: >SIZE    ( node -- addr)     CELL-   ;              \ given a node addr, return allocated size
+: >SIZE@   ( node --  u )  >HEAP >size @E ;
+
+: >PREV    ( node -- addr')   2 CELLS - ;             \ get the link to the previous memory block
+: >PREV@   ( node -- addr') >HEAP >PREV @E ;
+
+
+
+: FINDNODE ( node -- ? )                              \ test for a valid node
+           dup lastnode @ =
+           if
+             true
+           else
+               0 >R                                   \ put a flag on Rstack
+               LASTNODE @
+               BEGIN
+                     >PREV@ dup
+               while
+                     2DUP =
+                     IF
+                       R> 1- >R
+                     THEN
+               REPEAT
+              2DROP
+              R>
+           then ;
+
+: ?node  ( addr -- addr)                                 \ ABORT on attempt to access bad HEAP node or pass through
+         DUP FINDNODE 0=
+         IF
+           cr ." Addr=" 5 u.R
+           true ABORT" Not a HEAP node"
+         then ;
+
+\ 14.6.1.1605 FREE ( a-addr -- ior )
+\
+\ Return the contiguous region of data space indicated by a-addr to the system
+\ for later allocation.
+\ a-addr shall indicate a region of data space that was previously obtained by
+\ ALLOCATE or RESIZE.
+\ The data-space pointer is unaffected by this operation.
+\ If the operation succeeds, ior is zero. If the operation fails, ior is the
+\ implementation-defined I/O result code.
+
+\ In this implementation FREEing other than the last item allocated removes
+\ all items before it as well.
+
+: FREE ( addr -- ior)                                 \ unconditional removal.  that's it.
+        DUP FINDNODE                                  \ check if addr is a valid node
+        IF  >prev@
+            dup dup >size@ + AP !                     \ move the allocation pointer to node+size position
+            LASTNODE !                                \ make it the last node
+            false                                     \ return 0
+        ELSE
+            FREE_ERROR
+        THEN ;
+
+
+\ 14.6.1.2145 RESIZE ( a-addr1 u -- a-addr2 ior )
+\
+\ Change the allocation of the contiguous data space starting at the address
+\ a-addr1, previously allocated by ALLOCATE or RESIZE, to u address units.
+\ u may be either larger or smaller than the current size of the region.
+\ The data-space pointer is unaffected by this operation. If the operation
+\ succeeds, a-addr2 is the aligned starting address of u address units of allocated memory and ior
+\ is zero. a-addr2 may be, but need not be, the same as a-addr1. If they are
+\ not the same, the values contained in the region at a-addr1 are copied to
+\ a-addr2, up to the minimum size of either of the two regions. If they are
+\ the same, the values contained in the region are preserved to the minimum
+\ of u or the original size. If a-addr2 is not the same as a-addr1, the region
+\ of memory at a-addr1 is returned to the system according to the operation
+\ of FREE.
+\ If the operation fails, a-addr2 equals a-addr1, the region of memory at a-
+\ addr1 is unaffected, and ior is the implementation-defined I/O result code.
+
+
+: RESIZE ( addr u -- addr' ior)
+          cell max                                    \ clip the min size to 1 cell and no negative numbers
+          over LASTNODE @ =                           \ NON ANS: you can only re-size the last node.
+          OVER FINDNODE  or                           \ also test if it's a good node address
+          if  dup toobig?
+             if
+                  DROP resize_error
+             else
+                  2dup swap >HEAP >SIZE !E            \ update the size value in the node
+                  over + AP !                         \ ... and move the pointer
+                  false
+             then
+          else
+                resize_error                          \ attempted to resize earlier node
+          then ;
+
+: HEAP-SIZE ( -- u )   TOM where - ;                  \ returns memory available in the heap
+
+
+INIT-HEAP
+
+
+\ where have I seen this before?  Allocate memory, but abort if it fails.
+: farmalloc   ( bytes -- addr )  allocate  abort" Malloc failed" ;
+
+: farcalloc   ( #elements size -- addr )
+              *  allocate abort" Calloc failed"
+              dup dup  >size@ HEAP @ SWAP 0 FILLL ;
+
+: .Heap    cr ." Heap free= " HEAP-SIZE u.  ;
+
+\ count nodes backwards
+:  #NODES  ( -- n)
+           0 >R
+           LASTNODE @
+           BEGIN
+                >PREV@ DUP
+           while
+                  R> 1+ >R
+           REPEAT
+           R> ;
+
+\ show the addresses and sizes
+
+: .node   ( node -- )
+          dup 6 u.r  TAB  dup  >size@ 5 U.r  TAB  >prev@ 6 u.r ;
+
+: .nodes
+           CR ."  Node    Bytes   Link"
+           cr
+           lastnode @
+           BEGIN
+               cr dup .node
+               >PREV@
+           dup 0= until
+           2drop
+           CR ." Total nodes = " #nodes .  TAB  .Heap ;
+
+           
+: HEAP!  ( n -- )   >HEAP !E ;
+: HEAP@  ( adr -- ) >HEAP @E ;
+
+: $PLACE   ( c-addr addr -- ) HEAP @ SWAP $!L ;
+: WRITE$   ( c-addr -- ) heap @ swap $.L ;
+
+\ INTERESTING!  smart string store.  Aborts if node is not allocated
+: $$!      ( c-addr addr -- ) HEAP @ SWAP ?node  $!L ;
+
+
+\                        FALLOCAT ENDS
+\ =========================================================================
+
+
+
+\ TEST CODE
+0 [if]
+\ TEST CODE
+\ test malloc and create some named pointers to hold our allocated memory,
+\ put some strings in them for test purposes
+
+
+
+
+: $PLACE   ( c-addr addr -- ) HEAP @ SWAP  $!L ;
+
+
+
+: WRITE$   ( c-addr  -- ) heap @ swap $.L ;
+
+
+hex
+ .heap
+
+     20 FARmalloc value A$      C" THIS STRING IS A"   A$ $PLACE
+     20 FARmalloc value B$      C" THIS STRING IS B"   B$ $PLACE
+     40 FARmalloc value C$      c" THIS STRING IS C"   C$ $PLACE
+     50 FARmalloc value D$      c" THIS STRING IS D"   D$ $PLACE
+     60 FARmalloc value E$      c" THIS STRING IS E"   E$ $PLACE
+     70 FARmalloc value F$      c" THIS STRING IS F"   F$ $PLACE
+     80 FARmalloc value G$      c" THIS STRING IS G"   G$ $PLACE
+     90 FARmalloc value H$      c" THIS STRING IS H"   H$ $PLACE
+    100 FARmalloc value I$      c" THIS STRING IS I"   I$ $PLACE
+    110 FARmalloc value J$      c" THIS STRING IS J"   J$ $PLACE
+
+    120 FARmalloc value K$      c" Around 2,700 arrived in Slovenia on Saturday and more were expected overnight."   K$ $PLACE
+    130 FARmalloc value L$      c" He said Slovenia would accept the migrants as long as Austria and Germany kept their borders open."  L$ $PLACE
+    140 FARmalloc value M$      c" Last month it also shut its frontier with Serbia, which was another transit route to Western Europe.a."   M$ $PLACE
+    150 FARmalloc value N$      c" Many had spent weeks walking through Greece, Macedonia and Serbia to reach the Croatian border."   N$ $PLACE
+    160 FARmalloc value O$      c" Image copyright AFPImage caption Migrants who later reached Spielfeld in Austria waited to be transported to refugee centres."   O$ $PLACE
+    170 FARmalloc value P$      c" Slovenia's official STA news agency later some of the migrants had already reached the Austrian border and were being registered at the Spielfeld crossing."   P$ $PLACE
+    180 FARmalloc value Q$      c" A spokeswoman for the UN refugee agency (UNHCR) said most of the migrants crossing Slovenia were from Syria, Iraq and Afghanistan."   Q$ $PLACE
+    190 FARmalloc value R$      c" They are fleeing from war... they are literally running for their lives, Caroline van Buren told AFP news agency at the Petisovci checkpoint."  R$ $PLACE
+    200 FARmalloc value S$      c" Slovenia's army has been placed on standby to help police deal with the influx, Prime Minister Miro Cerar said."   S$ $PLACE
+    210 FARmalloc value T$      c" Hungary said it closed its border with Croatia at midnight on Friday because European Union leaders had failed to agree a plan to stem the flow of asylum seekers."   T$ $PLACE
+
+    220 FARmalloc value U$      c" THIS STRING IS U"   U$ $PLACE
+    230 FARmalloc value V$      c" THIS STRING IS V"   V$ $PLACE
+    240 FARmalloc value W$      c" THIS STRING IS W"   W$ $PLACE
+    250 FARmalloc value X$      c" THIS STRING IS X"   X$ $PLACE
+    260 FARmalloc value Y$      c" THIS STRING IS Y"   Y$ $PLACE
+    270 FARmalloc value Z$      c" THIS STRING IS Z"   Z$ $PLACE
+
+[then]
+
+-1 [if]
+\ create and arbitrary number of nodes for test purposes
+
+  0 value a
+  0 value b
+  0 value c
+  0 value d
+  0 value e
+  0 value f
+
+: createnodes
+             100 FARmalloc to a
+             100 FARmalloc to b
+             100 FARmalloc to c
+             100 FARmalloc to d
+             100 FARmalloc to e
+             100 FARmalloc to f 
+             .NODES
+             ;
+
+: destroy   A FREE ABORT" FREE CAUSED AN ERROR" ;
+
+: fillnodes
+        C" This is STRING A"   A $$!
+        C" This is STRING B"   B $$!
+        c" This is STRING C"   C $$!
+        c" This is STRING D. How cool is that?"   D $$!
+        c" This is STRING IS E.  It is stored in the HEAP!"   E $$!
+        c" This is STRING IS F. Do not taken any meaning from that."   F $$!  ;
+
+.nodes
+
+[then]

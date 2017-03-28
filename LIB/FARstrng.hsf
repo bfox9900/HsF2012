@@ -1,0 +1,89 @@
+\ FAR string functions. Separated from hsforth strings
+
+\ FAR SEGMENT STRING WORDS
+DECIMAL
+
+\ Long (far segment) string operations for HSF2000 intel memory model
+: $.l     ( seg  adr$     --       )  countl typel ;
+: $movel  ( sseg sadr dseg dadr -- )  2over c@l 1+     cmovel ;  \ 3/86 was $!l
+: $!l     (      sadr dseg dadr -- )  >r lists @ -rot r> $movel ;
+: $@l     ( sseg sadr      dadr -- )  lists @ swap $movel ;
+
+: placel  ( sseg sadr cnt $addr -- )
+           LISTS @ SWAP    ( -- sseg sadr cnt Dseg $addr )
+           ROT             ( --  sseg sadr dseg $addr cnt)
+           2DUP SWAP C!    \ store the count byte
+           SWAP 1+ SWAP 
+           CMOVEL ;
+
+: erasel  ( seg addr cnt -- )  0 filll ; 
+
+: $variable-far ( segdsc #bytes --  )  1+ table-far ;
+
+: $con-far    ( segdsc srcadr $con-far name  ie myseg c" message" $con-far msg1 )
+              2dup 2>r  r@ 4i@ >r   c@ 1+ table-far tr> -rot @ swap $!l ;
+: $xchgl
+              2dup lists @ pad $movel   2>r 2dup 2r> $movel
+              2>r  lists @ pad                   2r> $movel ;
+
+: +$l         ( seg1 adr1  seg2 adr2  --  pad )
+              2>r 2dup c@l pad + 1+  2r@ 1+ rot lists @ swap 2r> c@l dup>r <cmovel
+              pad $@l
+              r>  pad +! pad ;
+
+CODE ($COMPAREL)
+        ax bx xchg.
+        cx ax mov.
+        bx si mov.
+        si pop.
+        dx ds mov.
+        ds pop.
+        di pop.
+        es pop.
+        repe: cmpsb.
+        si bx mov.
+        ds dx mov.
+        bx cx mov.
+        jz done.
+        pushf.
+        ax cx sub.
+        bx ax xchg.
+        popf.
+        jb done.
+        bx neg.
+@@ done.
+        next.
+END-CODE
+
+
+: $COMPAREL ( para#1 offset1  para#2 offset2  --  -n:0:n )
+        countl >r    2swap countl >r 2swap    2R@ min ($comparel)
+        ?dup 0=
+        if 2R@ min 1+ 2R> -  dup
+           if +-
+           else nip
+           then
+        else rdrop rdrop
+        then ;
+
+: $<>l  $comparel 0 <> ;
+
+DECIMAL
+
+
+\ these are added for completeness ...........................................
+
+: ANS>$  ( addr u -- $ )  >NEW:TOP$ ;
+
+: $>z    ( $ -- zstring )               \ convert $ to a 'C' style '0' terminated string
+        push$  count over + 0 swap c! ; \ original $ is not altered
+
+
+: Z>ANS ( zstring -- addr u )           \ result is an ANS stack string
+        -1                              
+        BEGIN  1+ 2dup + C@ 0=  UNTIL ;
+
+
+: z>$    ( ztring -- $ )                \ convert 0 terminated string to Pascal string
+           Z>ans ans>$ ;                \ original Zstring is not altered
+

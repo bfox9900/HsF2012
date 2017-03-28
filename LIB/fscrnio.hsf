@@ -1,0 +1,177 @@
+\ (   FSCRNIO.hsf                    COPYRIGHT 1983,1984  HARVARD SOFTWORKS )
+
+ \ June 11 2008  Modified for HSF2000, removed line editor to a separate file
+\ Apr 2015      changed named to fscrnio.hsf
+
+HEX
+400 CONSTANT B/BUF                   \ size of the buffer
+200 CONSTANT B/REC
+
+b/buf cell+ cell+ constant bstruc    \ size of the buffer structure
+
+  0 USER-VAR BHANDLE
+
+41 $variable ACTIVE$
+
+\ : SET-active$ ( f$ - f$ ) active$ 40 BLANK DUP DUPC@ 1+ active$ SWAP CMOVE ;
+
+DECIMAL
+  2 CONSTANT #BUFF                   \ # of active buffers
+ 12 CONSTANT FORM                    \
+ 50 value    L/PAGE                  \ lines/page to use in index
+ 64 value    scr_line                \ this is the normal value for block source files but WINA forth uses 79 chars ??
+
+HEX
+: LIMIT         LISTS 2I@ 60 - ;
+: FIRST         LIMIT bstruc #BUFF * - ;
+
+: updt_flag  ( n -- ?) 7FFF and ;
+
+VARIABLE PREV           FIRST PREV !
+VARIABLE USE            FIRST USE  !
+VARIABLE LOWBLK         1 LOWBLK !
+VARIABLE HIGHBLK        168 HIGHBLK !
+VARIABLE #PAGE
+VARIABLE #LINE
+
+50 $VARIABLE BLOCK-FILE
+
+
+: ?SF   THE BHANDLE 0= ABORT" No screen file open!" ;
+
+: R/W-SCRNF   ( adr scr#  --  adr seg )
+        ?SF
+        ( 1- :: to number blocks from 1 ) B/BUF U* 2DUP THE BHANDLE LSEEK
+        DNEGATE D+  OR ABORT" Disk/File too small"   LISTS @ ;
+
+: RSCRNF      ( adr scr#  --  adr )
+        R/W-SCRNF   OVER B/BUF THE BHANDLE READH
+        B/BUF -   ABORT" BLK Read Failed" ;
+
+: WSCRNF      ( adr scr#  --      )
+        R/W-SCRNF   SWAP B/BUF THE BHANDLE WRITEH
+        B/BUF - ABORT" BLK Write Failed" ;
+
+: +BUF        ( addr1 -- addr2    )
+        bstruc + DUP LIMIT =  IF DROP FIRST THEN ;
+
+: BUFFER      ( n -- addr )
+        USE @ DUP>R @ 0<
+        IF
+          R@ cell+ R@ @ updt_flag WSCRNF
+        THEN
+        R@ !
+        R@ PREV !
+        R@ +BUF USE !
+        R> cell+ ;
+
+: <SFBLOCK> ( n - addr )
+        ?SF
+        >R
+        PREV @ DUP@  R@ - updt_flag
+        IF
+           BEGIN
+              +BUF DUP PREV @ =
+              IF
+                 DROP R@ BUFFER  R@ RSCRNF cell-
+              THEN
+              DUP@ R@ -   updt_flag NOT
+           UNTIL
+           DUP PREV !  DUP USE @ =
+           IF
+              DUP +BUF USE !
+           THEN
+      THEN
+      RDROP cell+ ;
+
+: <SFLOAD> ( -- )
+        DUP 0= ABORT" Cannot load from screen 0"
+        THE SOURCE-ID >R -1 to SOURCE-ID
+        THE TIBSEG  THE TIB  ROT <LD> R> to SOURCE-ID ;
+
+' <SFLOAD> USER-VECTOR LOAD
+
+
+: EMPTY-BUFFERS ( -- )
+        FIRST LIMIT OVER - 0 FILL
+        #BUFF 0
+        DO
+          7FFF bstruc I * FIRST I!
+        LOOP ;
+
+
+EMPTY-BUFFERS
+
+ : SF-IO ( -- )  \ switch to "screen" file I/O
+        scr_line C/L !
+        [']  <SFBLOCK> to BLOCK
+        [']  <SFLOAD> to LOAD ;
+
+
+:  OPEN-SCREEN                                     \ Usage:  $" screen.fil" OPEN-SCREEN )
+        dup block-file $!
+        EMPTY-BUFFERS
+        DUP FILE-SIZE B/BUF U/MOD HIGHBLK ! DROP  OPEN-R/W to BHANDLE SF-IO ;
+
+
+:  MAKE-SCREEN   ( #screens caddr -- )             \ Usage:   256 $" scrn.fil" MAKE-SCREEN
+        MKFILE  to BHANDLE
+        FIRST cell+ B/BUF BLANK
+        1+  1
+        DO
+            FIRST cell+ I WSCRNF
+        LOOP
+        THE BHANDLE CLOSEH
+        0 to BHANDLE ;
+
+
+: SAVE-BUFFERS
+        FIRST
+        #BUFF 0
+        DO
+           DUP@ 0<
+           IF  DUP@ updt_flag OVER 2DUP ! cell+ SWAP WSCRNF
+           THEN  +BUF
+        LOOP
+        DROP
+        THE BHANDLE DUPH CLOSEH ;
+
+ SYNONYM FLUSH SAVE-BUFFERS
+
+
+:  F-IO ( -- )  \ switch to normal file I/O
+        THE BHANDLE
+        IF
+           FLUSH EMPTY-BUFFERS
+        THEN
+        ['] ?SF DUP to BLOCK to LOAD
+        50 C/L ! ;
+
+
+: CLOSE-SCREEN ( -- )
+               F-IO
+               THE BHANDLE ?DUP
+               IF CLOSEH
+                  BHANDLE off
+               THEN ;
+
+: UPDATE      ( -- )  PREV @ @  8000 OR PREV @ ! ;
+
+
+: CLEAR      ( n -- )  BUFFER B/BUF BLANK  UPDATE ;                \      scr -
+
+
+: COPY      ( n -- )   SAVE-BUFFERS    SWAP  BLOCK  2-  !  UPDATE ;   \  from to -
+
+: THRU      ( 1st-block last-block -- )
+            1+ SWAP
+            DO
+               I U. I LOAD
+            LOOP ;
+
+: -->       ( -- )                           \ continue loading the next block
+            source-id @ ABS 1- ABORT" Not loading"
+            BLK 1+! BLK @ BLOCK TIB !
+            >IN 0! ; IMMEDIATE
+
+Decimal

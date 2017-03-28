@@ -1,0 +1,363 @@
+\ dosfile.hsf   primitives for FXForth   Brian Fox Sept 8 2015
+\ ported to HSF2012
+
+\  ** SMALL MEMORY MODEL **
+\ DOS info from:  http://stanislavs.org/helppc/
+
+
+JMP-TAB OFF     \ start a new jump table for this file
+
+\ DOS  Error codes. Only these are returned in AX after INT 21 ...............
+\       01  Invalid function number
+\	02  File not found
+\	03  Path not found
+\	04  Too many open files (no handles left)
+\	05  Access denied
+\	06  Invalid handle
+\	07  Memory control blocks destroyed
+\	08  Insufficient memory
+\	09  Invalid memory block address
+\	0A  Invalid environment
+\	0B  Invalid format
+\	0C  Invalid access mode (open mode is invalid)
+\	0D  Invalid data
+\	0E  Reserved
+\	0F  Invalid drive specified
+\	10  Attempt to remove current directory
+\	11  Not same device
+\	12  No more files
+\ =========================================================================
+
+\ DOS File Attributes
+\
+\	Directory Attribute Flags
+\
+\	|7|6|5|4|3|2|1|0| Directory Attribute Flags
+\	 | | | | | | | `--- 1 = read only, 0 = r/w
+\	 | | | | | | `---- 1 = hidden
+\	 | | | | | `----- 1 = system
+\	 | | | | `------ 1 = volume label  (exclusive)
+\	 | | | `------- 1 = subdirectory
+\	 | | `-------- 1 = archive
+\	 `----------- unused
+\
+\	Directory Time Format
+\
+\	|F|E|D|C|B|A|9|8|7|6|5|4|3|2|1|0| Directory Time Format
+\	 | | | | | | | | | | | `----------- seconds (2 second increments)
+\	 | | | | | `---------------------- minutes (0-59)
+\	 `------------------------------- hours (0-23)
+\
+\	Directory Date Format
+\
+\	|F|E|D|C|B|A|9|8|7|6|5|4|3|2|1|0| Directory Date Format
+\	 | | | | | | | | | | | `----------- Day (1-31)
+\	 | | | | | | | `------------------ Month (1-12)
+\	 `------------------------------- Year (less 1980)
+\
+\	- with respect to the findfirst() and findnext() functions normal
+\	  files are always included along with the requested attributes
+\	  except when the LABEL attribute is requested.  It's up to the
+\	  programmer to determine which files are match the requested
+\	  attributes.
+
+
+\ =========================================================================
+\ INT 21,3C - Create File returning Handle
+\	AH = 3C
+\	CX = file attribute  (see FILE ATTRIBUTES)
+\	DS:DX = pointer to ASCIIZ path name
+
+\	on return:
+\	CF = 0 if successful
+\	   = 1 if error
+\	AX = files handle if successful
+\	   = error code if failure  (see DOS ERROR CODES)
+\
+\	- if file already exists, it is truncated to zero bytes on opening
+
+HEX
+code CREATEH  ( Zaddr attrib -- handle|err ? ) \ 0 = no error
+           CX  BX MOV.
+           DX  POP.
+           AH 3C IB MOV.
+           BX  BX XOR.               \ clear bx for use a success/fail flag
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           JNC OKCR:
+           BX DEC.                   \ if carry is set, we have an error. Set TOS to true (-1)
+@@ OKCR:   BP POP.
+           SI POP.
+           AX PUSH.                  \ push the HANDLE or error code (2nd on Stack)
+           NEXT.
+END-CODE
+
+\ =========================================================================
+\ AH = 3D OPEN file returning handle
+\	AL = open access mode
+\	     00  read only
+\	     01  write only
+\	     02  read/write
+\	DS:DX = pointer to an ASCIIZ file name
+\
+\	on return:
+\	AX = file handle if CF not set
+\	   = error code if CF set  (see DOS ERROR CODES)
+\
+\	Access modes in AL:
+\
+\	|7|6|5|4|3|2|1|0|  AL
+\	 | | | | | `-------- read/write/update access mode
+\	 | | | | `--------- reserved, always 0
+\	 | `-------------- sharing mode (see below) (DOS 3.1+)
+\	 `--------------- 1 = private, 0 = inheritable (DOS 3.1+)
+\
+\
+\	Sharing mode bits (DOS 3.1+):	       Access mode bits:
+\	654				       210
+\	000  compatibility mode (exclusive)    000  read access
+\	001  deny others read/write access     001  write access
+\	010  deny others write access	       010  read/write access
+\	011  deny others read access
+\	100  full access permitted to all
+\
+\	- will open normal, hidden and system files
+\	- file pointer is placed at beginning of file
+\
+
+code OPENH  ( Zaddr attrib -- handle|err ? ) \ 0 = no error
+           AL  BL  MOV.              \ Put attrib from TOS to AL
+           DX  POP.
+           AH  3D IB MOV.            \ DOS read file using handle
+           BX  BX XOR.               \ clear bx for use a success/fail flag
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           JNC OKOP:
+           BX DEC.                   \ if carry is set, we have an error. Set TOS to true (-1)
+@@ OKOP:   BP POP.
+           SI POP.
+           AX PUSH.                  \ push the HANDLE or error code (2nd on Stack)
+           NEXT.
+END-CODE
+
+\ =========================================================================
+\ Move File Pointer INT 21,42
+\	AH = 42h
+\	AL = origin of move:
+\	     00 = beginning of file plus offset  (SEEK_SET)
+\	     01 = current location plus offset	(SEEK_CUR)
+\	     02 = end of file plus offset  (SEEK_END)
+\	BX = file handle
+\	CX = high order word of number of bytes to move
+\       DX = low order word of number of bytes to move
+\
+\	on return:
+\	AX = error code if CF set  (see DOS ERROR CODES)
+\	DX:AX = new pointer location if CF not set
+\
+\	- seeks to specified location in file
+\
+code MOVPTR  ( low high handle function -- n1 n2 ?)  \ if flag=true, n1,n2 = 32bit err#.  If flag=false n1 n2 is 32bit file ptr
+              AX  BX XCHG.            \ function #
+              BX  POP.                \ handle
+              CX  POP.                \ high order #
+              DX  POP.                \ low order #
+              SI  PUSH.
+              BP  PUSH.
+              21  INT.
+              BP  POP.
+              SI  POP.
+              JNC OKPTR:
+              BX  AX XCHG.           \ if carry flag=true set BX to AX (ERR#)
+              JMP PERR:
+@@ OKPTR:     BX BX XOR.              \ clr TOS for error flag
+@@ PERR:      AX  PUSH.               \ AX is lo order word
+              DX  PUSH.               \ DX is hi order word
+              NEXT.
+END-CODE
+
+
+\ =========================================================================
+\ READH int 21 3F  \ *** renamed to ISO Forth READ-FILE ***
+\
+\       AH = 3F
+\	BX = file handle
+\	CX = number of bytes to read
+\	DS:DX = pointer to read buffer
+\
+\	on return:
+\	AX = number of bytes read is CF not set
+\	   = error code if CF set  (see DOS ERROR CODES)
+\
+\	- read specified number of bytes from file into buffer DS:DX
+\	- when AX is not equal to CX then a partial read occurred due
+\	  to end of file
+\	- if AX is zero, no data was read, and EOF occurred before read
+\
+
+\ DOS output logic                    FxForth output
+\  AX   CF   CX status                stack
+\ ------------------                   -------------
+\  0    0    u   EOF                  \ --  0  -1
+\  u    0    *   good read            \ --  u   0
+\  n    1    *   DOS error  1 .. 12   \ --  AX  err# ( see top of this file for meaning)
+\  u    *    u'  <>  partial read     \ --  u   0
+
+
+code READ-FILE  ( bufadr #bytes handle -- ax ?)
+\          BX           \ BX is the top of stack in FXForth so handle is in BX
+           CX POP.
+           DX POP.
+           AH 3F IB MOV.
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           BP POP.
+           SI POP.
+           JC ERR:
+
+@@ EOF:    AX AX OR.          \ test AX for 0
+           JNZ OKRF:          \ CF not zero, goto OKRF
+           BX -1 IW MOV.      \ AX=0 so set TOS = true (error flag)
+           JMP AXPSH:
+
+@@ ERR:    BX  AX MOV.        \ move error code to TOS
+           JMP AXPSH:
+
+@@ OKRF:   BX BX XOR.
+@@ AXPSH:  AX PUSH.
+           NEXT.
+END-CODE
+
+\ =========================================================================
+\ WRITEH
+\       AH = 40h
+\	BX = file handle
+\	CX = number of bytes to write, a zero value truncates/extends
+\	     the file to the current file position
+\	DS:DX = pointer to write buffer
+\
+\       on return:
+\	AX = number of bytes written if CF not set
+\	   = error code if CF set  (see DOS ERROR CODES)
+\
+\	- if AX is not equal to CX on return, a partial write occurred
+\	- this function can be used to truncate a file to the current
+\	  file position by writing zero bytes
+
+code writeh  ( bufadr #bytes handle -- #bytes u|err# ? )
+\          BX             \ BX is the top of stack in FXForth so handle is in BX
+           CX POP.
+           DX POP.
+           AH 40 IB MOV.  \ DOS read file using handle
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           BP POP.
+           SI POP.
+           JNC OKWR:
+           BX -1 IW MOV.   \ TRUE=-1 = there is an error
+           JMP WERR:
+@@ OKWR:   BX BX XOR.
+@@ WERR:   AX PUSH.
+           NEXT.
+END-CODE
+
+
+\ =========================================================================
+\ DUPH INT 21,45 - Duplicate File Handle
+\	AH = 45h
+\	BX = file handle
+\
+\	on return:
+\	AX = new file handle if CF not set
+\	   = error code if CF set  (see DOS ERROR CODES)
+\
+\	- gets another file handle for the same file
+\	- both file handles move in unison
+\	- often used to flush file data and update a file directory
+\	  entry without closing the initial file
+\
+code DUPH ( handle -- handle2|err# ? )   \ 0 = NO ERROR
+\          BX              \ BX is the top of stack in FXForth so handle is in BX
+           AH 45 IB MOV.
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           BP POP.
+           SI POP.
+           JNC OKDUP:
+           BX -1 IW MOV.    \ if carry is set, we have an error. Set TOS to true (-1)
+           JMP DPERR:
+@@ OKDUP:  BX BX XOR.       \
+@@ DPERR:  AX PUSH.         \ put handle -or- error code on stack
+           NEXT.
+END-CODE
+
+
+\ =========================================================================
+\ DOS - Close File Using Handle
+\	AH = 3E
+\	BX = file handle to close
+\
+\	on return:
+\	AX = error code if CF set  (see DOS ERROR CODES)
+\
+\	- if file is opened for update, file time and date stamp
+\	  as well as file size are updated in the directory
+\	- handle is freed
+\
+\ 11.6.1.0900 CLOSE-FILE ( fileid -- ior )
+\ Close the file identified by fileid. ior is the implementation-defined I/O result code.
+
+code CLOSE-FILE ( handle -- error-code)  ( 0 = NO ERROR)
+\          BX                        \ BX is the top of stack in FXForth so handle is in BX
+           AH 3E IB MOV.
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           jc OK3:
+           ax ax xor.
+@@ OK3:    BP POP.
+           SI POP.
+           BX AX XCHG.               \ put error code in Forth TOS
+           NEXT.
+END-CODE
+
+\ =========================================================================
+\ INT 21,43 - Get/Set File Attributes
+\	AH = 43h
+\	AL = 00 to get attribute
+\	   = 01 to set attribute
+\	DS:DX = pointer to an ASCIIZ path name
+\	CX = attribute to set
+\
+\	|5|4|3|2|1|0|  CX  valid file attributes
+\	 | | | | | `---- 1 = read only
+\	 | | | | `----- 1 = hidden
+\	 | | | `------ 1 = system
+\	 | `--------- not used for this call
+\	 `---------- 1 = archive
+\
+\	on return:
+\	AX = error code if CF set  (see DOS ERROR CODES)
+\	CX = the attribute if AL was 00
+\
+code ATTRIB ( zstring  set/get -- bits ?)
+           AL BL XCHG.                \ 0=get, 1=set
+           DX POP.
+           AH 43 IB MOV.
+           SI PUSH.
+           BP PUSH.
+           21 INT.
+           BX BX XOR.
+           JNC OKat:
+           BX DEC.
+@@ OKat:   BP POP.
+           SI POP.
+           CX PUSH.                 \ push CX register , BX(tos) has success/fail flag
+           NEXT.
+END-CODE
+

@@ -1,0 +1,120 @@
+\ ARRAYS.hsf  FORTH style arrays for HSF2000 30Sep2014 FOX
+\ These arrays store size bytes so that error checking could be implement
+
+\ these arrays are unique in that they contain a size field that can be used
+\ for run-time error checking
+
+[UNDEFINED] BUFFER:  [IF]
+: buffer: ( n -- )
+        create dup , allot
+
+        does> ( -- caddr ) cell+  ;
+[THEN]
+
+[UNDEFINED] INLINE[
+[IF]
+
+: array:  ( n -- )
+        create  dup , cells allot
+
+    does> ( adr -- ) cell+ swap cells + ;
+
+[ELSE]
+
+: array:  ( n -- )
+        create  dup , cells allot
+
+        DOES>   ( adr -- ) [% INLINE[ cell+ swap cells + ]  %] ;
+
+[THEN]
+
+: carray: ( n -- )
+        create dup , allot
+
+        does> ( adr -- ) cell+ + ;
+        
+
+
+: <width>  ( addr -- n) [ 2 cells ] literal - @ ;
+
+: strings: ( size width -- )   \ create a fixed width string array
+          Create  cell +       \ make the width 2 bytes wider to handle HSF2000 strings
+                  dup SS-width > abort" Strings:  width > 255"
+                  2dup , ,     \ compile the size and width of the fields
+                   * allot     \ multiply them to allocate the space
+          does>  (  n -- adr)
+                 dup >r      \ based address saved
+                 <width>  *
+                 r> 2 cells+  + ;
+
+
+
+\ get the size of the array
+: size[]  cell- @ ;
+
+exit
+
+\ range checking arrays
+: array:  ( n -- )
+        create  dup , cells allot
+
+        ;code ( adr -- adr )
+              inline[ dup @   cell+ swap cells + ]
+        next.
+        end-code
+
+: carray: ( n -- )
+        create dup , allot
+
+        does> ( adr -- caddr ) cell+ + ;
+
+
+
+
+
+\ demo code
+
+1000 array: ]q
+1000 carray: ]foo
+
+: fillit
+        0 ]q size[] 0
+        do
+           i dup ]q !
+        loop ;
+
+: seeit
+        0 ]q size[] 0
+        do
+          i ]q ?
+        loop ;
+
+hex
+: deadbeef
+       0 ]foo size[] 0
+       do
+
+           DE i     ]foo C!
+           AD i 1 + ]foo C!
+           BE i 2 + ]foo c!
+           EF i 3 + ]foo c!
+
+       4 +loop ;
+
+: cfillit
+        0 ]foo size[] 0
+        do
+           i dup ]foo c!
+        loop ;
+
+       
+: wheresthebeef
+         0 ]foo dup size[] dump ;
+
+cr
+
+  deadbeef
+cr
+  wheresthebeef
+
+

@@ -1,0 +1,1525 @@
+ \ GRAPHICS  Copyright 1983,1991 HARVARD SOFTWORKS All rights reserved.
+\ modified for use with HSF2000 Brian Fox  May 6 2007
+
+
+HEX
+
+false [if]
+
+\ DON'T THINK I will be using a light Pen any time soon :-))
+
+(  --  row  column   0..199   0..319or639  -1  /// 0 )
+: LIGHTPEN@  ( -- )
+             0400     0 0 0  VIDEO-INT  FF00 AND
+             IF  D>R  -SPLIT  R> -SPLIT DROP  R> -1
+             ELSE DROP 2drop 0
+             THEN ;
+
+[then]
+
+DECIMAL
+
+\ AX=0C  AL Color  BH=page  BL=0   CX=clmn  DX=row
+
+1280 value #CLM
+ 960 value #ROW
+
+CREATE CLIP[]
+        0 ,    0 , #ROW , #CLM ,  \ top.r left.c bottom.r right.c
+
+CREATE CLIP][
+        #ROW , #CLM ,   0 ,   0 ,
+
+: CLIP-WITHIN
+        CLIP][ 4+ 2! CLIP][ 2! ;
+
+: -WITHIN
+        #ROW #CLM 0 0 CLIP-WITHIN ;
+
+: CLIP-BEYOND
+        CLIP[] 4+ 2! CLIP[] 2! ;
+
+: -BEYOND
+        0 0 #ROW #CLM CLIP-BEYOND ;
+
+HEX
+CODE STICK1
+        BX PUSH.
+        SI PUSH.
+        CX CX XOR.
+        CX DEC.
+        DX 201 IW MOV.
+        AL OUT-DX.
+        AL IN-DX.
+        AX 3 IW AND.
+        BX AX MOV.
+@@ CHK. AL IN-DX.
+        AL 3 IB AND.
+        BL AL XOR.
+        LOOPE CHK.
+        CX NEG.
+
+         BL 1 RCR.
+         JNC NOT1.
+         SI CX MOV.
+@@ NOT1. BL 1 RCR.
+         JNC NOT2.
+         DI CX MOV.
+@@ NOT2. CX NEG.
+         BX AX MOV.
+         AL 03 IB AND.
+         JNZ CHK.
+         BX SI MOV.
+         SI POP.
+         DI PUSH.
+        NEXT.
+END-CODE
+
+
+CODE STICK2
+         BX PUSH.
+         SI PUSH.
+         CX CX XOR.
+         CX DEC.
+         DX 201 IW MOV.
+         AL OUT-DX.
+         AL IN-DX.
+         AX 0C IW AND.
+         BX AX MOV.
+
+@@ CHK.  AL IN-DX.
+         AL 0C IB AND.
+         BL AL XOR.
+         LOOPE CHK.
+
+         CX NEG.
+         BL 1 RCR.
+         BL 1 RCR.
+         BL 1 RCR.
+         JNC NOT3.
+         SI CX MOV.
+         BL 1 RCR.
+         JNC NOT3.
+         SI CX MOV.
+
+@@ NOT3. BL 1 RCR.
+         JNC NOT4.
+         DI CX MOV.
+
+@@ NOT4. CX NEG.
+         BX AX MOV.
+         AL 0C IB AND.
+         JNZ CHK.
+         BX SI MOV.
+         SI POP.
+         DI PUSH.
+     \    JMP-TAB 0!
+         NEXT.
+END-CODE
+
+
+CODE TRIGGER
+        BX PUSH.
+        BX BX XOR.
+        DX 201 IW MOV.
+        AL IN-DX.
+        CL 5 IB MOV.
+        AL 5 RCR.
+        JC NB1.
+        BX DEC.
+        BX PUSH.
+        BX INC.
+        JMPS B2?
+
+@@ NB1.
+        BX PUSH.
+
+@@ B2?
+        AL 1 RCR.
+        JC NB2.
+        BX DEC.
+        BX PUSH.
+        BX INC.
+        JMPS B3?
+
+@@ NB2.
+        BX PUSH.
+
+@@ B3?
+        AL 1 RCR.
+        JC NB3.
+        BX DEC.
+        BX PUSH.
+        BX INC.
+        JMPS B4?
+
+@@ NB3.
+        BX PUSH.
+
+@@ B4?
+        AL 1 RCR.
+        JC NB4.
+        BX DEC.
+
+@@ NB4.
+        NEXT.
+END-CODE
+
+CODE V+
+        AX POP.
+        CX POP.
+        BX CX ADD.
+        DX POP.
+        AX DX ADD.
+        AX PUSH.
+        NEXT.
+END-CODE
+
+
+CODE DSAL  ( d n -- d*2^n )
+        CX BX MOV.
+        AX POP.
+        DX POP.
+@@ MORE.
+        DX DX ADD.
+        AX AX ADC.
+        LOOPCX MORE.
+        DX PUSH.
+        AX BX XCHG.
+        NEXT.
+END-CODE
+
+
+
+CODE DSAR  ( d n -- d/2^n )  \ 32BIT shift arithmetic right
+        CX BX MOV.
+        AX POP.
+        DX POP.
+
+@@ MORE.
+        AX  1 SAR.
+        DX  1 RCR.
+        LOOPCX MORE.
+        DX PUSH.
+        AX BX XCHG.
+        NEXT.
+END-CODE
+
+
+
+CODE 64K*/
+        AX POP.
+        AX AX AND.
+        JNS POS.
+        AX NEG.
+        BX MUL.
+        AX 1 RCL.
+        DX 0 IW ADC.
+        DX NEG.
+        JMPS DONE.
+@@ POS.
+        BX MUL.
+        AX 1 RCL.
+        DX 0 IW ADC.
+
+@@ DONE.
+        BX DX MOV.
+        NEXT.
+END-CODE
+
+
+
+HEX
+CREATE MBITS    03F C, 0CF C, 0F3 C,  0FC C,
+CREATE CPATS    000 C, 055 C, 0AA C,  0FF C,
+
+CODE C320-PIX@   ( row clmn -- color )
+        DX POP.
+        AX B800 IW MOV.
+        ES AX MOV.
+        DI DX MOV.
+        DL 0FE IB AND.
+        AX 28 IW MOV.
+        DX MUL.
+        DI 1 IW AND.
+        DI 1 ROR.
+        DI 1 ROR.
+        DI 1 ROR.
+        DI AX ADD. ( +2000 )
+        DX   BX MOV.
+        DX 1 SAR.
+        DX 1 SAR.
+        DI DX ADD.
+        BX 3 IW AND.
+        AL MBITS +[BX] MOV.
+        AL NOT.
+        CX 3 IW MOV.
+        CL BL SUB.
+        CL 1 SHL.
+    ES: BL [DI] MOV.
+        BL AL AND.
+        BL 2 SHR.
+        NEXT.
+END-CODE
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+CODE C320-PIX!    ( x in CX   y in DX  color in AX // color+80 for xor )
+        AX PUSH.
+        AX B800 IW MOV.
+        ES AX MOV.
+        BX DX MOV.
+        DL  0FE IB AND.
+        AX 28 IW MOV.
+        DX MUL.
+        BX 1 IW AND.
+        BX 1 ROR.
+        BX 1 ROR.
+        BX 1 ROR.
+        AX BX ADD. ( +2000 )
+        BX   CX MOV.
+        CX 1 SAR.
+        CX 1 SAR.
+        AX CX ADD.
+        BX 3 IW AND.
+        BL MBITS +[BX] MOV.
+        BX AX XCHG.
+        DI POP.
+        DI 80 IW TEST.
+        JNZ XRM.
+    ES: [BX] AL AND.
+
+@@ XRM.
+        AL NOT.
+        DI  3 IW AND.
+        AL CPATS +[DI] AND.
+    ES: [BX] AL XOR.
+        RET.
+end-code  \ ?csp
+
+
+
+
+
+CREATE MXBITS
+        0 , 000C0 , 000F0 , 000FC , 000FF ,     \ Swap for byte reversal
+            0C0FF , 0F0FF , 0FCFF , 0FFFF ,
+
+
+CREATE CXPATS
+        0000 ,  5555 , 0AAAA , 0FFFF ,  1111 ,  2222 ,  3333 ,  4444 ,
+        6666 ,  7777 ,  8888 ,  9999 , 0BBBB , 0CCCC , 0DDDD , 0EEEE ,
+
+
+CODE C320-HL     ( row left right color -- / color+80x for xor )
+        DI POP.
+        CX POP.
+        DX POP.
+        BP PUSH.
+        BX PUSH.
+        AX B800 IW MOV.
+        ES AX MOV.
+        BX DX MOV.
+        DL 0FE IB AND.
+        AX 28 IW MOV.
+        DX MUL.
+        BX 1 IW AND.
+        BX 1 ROR.
+        BX 1 ROR.
+        BX 1 ROR.
+        AX BX ADD.              \ +2000
+        DX DI MOV.
+        DX  1 SAR.
+        DX  1 SAR.
+        DI 7 IW AND.
+        DI INC.                 \ end
+        BX   CX MOV.
+        CX 1 SAR.
+        CX 1 SAR.
+        BX 7 IW AND.
+        DX AX ADD.
+        AX CX ADD.
+        AL 0FE IB AND.
+        DL 0FE IB AND.          \ address even bytes only
+        BX 1 SHL.
+        BX MXBITS +[BX] MOV.
+        DI 1 SHL.
+        BP MXBITS +[DI] MOV.
+        BP NOT.
+        BX AX XCHG.
+        DI POP.
+        DI 1 SHL.
+        CX DI MOV.
+        DI 01E IW AND.
+        DI CXPATS +[DI] MOV.
+        BX DX CMP.
+        JE Done.
+
+@@ Long.
+        CH 1 IB TEST.
+        JNZ Xrm1.
+    ES: [BX] AX AND.
+
+@@ Xrm1.
+        AX NOT.
+        AX DI AND.
+        ES: [BX] AX XOR.
+        BX INC.
+        BX INC.
+        BX DX CMP.
+        JNE More.
+        AX BP MOV.
+        JMPS Done.
+@@ More.
+        AX AX XOR.
+        JMPS Long.
+
+@@ Done.
+        AX BP OR.
+        CH 1 IB TEST.
+        JNZ Xrm.
+        ES: [BX] AX AND.
+
+@@ Xrm.
+        AX NOT.
+        AX DI AND.
+        ES: [BX] AX XOR.
+        BP POP. BX POP.
+        NEXT.
+END-CODE
+
+
+CREATE HBITS
+        07F C, 0BF C, 0DF C,  0EF C, 0F7 C, 0FB C, 0FD C, 0FE C,
+
+
+CREATE HPATS
+        0 C, 0FF C,
+
+CODE C640-PIX@   ( row clmn -- color )
+        DX POP.
+        AX B800 IW MOV.
+        ES AX MOV.
+        DI DX MOV.
+        DL  0FE IB AND.
+        AX 28 IW MOV.
+        DX MUL.
+        DI 1 IW AND.
+        DI 1 ROR.
+        DI 1 ROR.
+        DI 1 ROR.
+        DI AX ADD. ( +2000 )
+        DX   BX MOV.
+        DX 1 SAR.
+        DX 1 SAR.
+        DX 1 SAR.
+        DI DX ADD.
+        BX 7 IW AND.
+        AL MBITS +[BX] MOV. ( BH is 0 )
+        AL NOT.
+        CX 7 IW MOV.
+        CL BL SUB.
+    ES: BL [DI] MOV.
+        BL AL AND.
+        NEXT.
+END-CODE
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+CODE C640-PIX!    ( x in CX   y in DX  color in AX // color+80 for xor )
+        AX PUSH.
+        AX B800 IW MOV.
+        ES AX MOV.
+        BX DX MOV.
+        DL 0FE IB AND.
+        AX 28 IW MOV.
+        DX MUL.
+
+        BX 1 IW AND.
+        BX 1 ROR.
+        BX 1 ROR.
+        BX 1 ROR.
+        AX BX ADD. ( +2000 )
+        BX CX MOV.
+        CX  1 SAR.
+        CX  1 SAR.
+        CX  1 SAR.
+        AX CX ADD.
+        BX 7 IW AND.
+        BL HBITS +[BX] MOV.
+        BX AX XCHG.
+        DI POP.
+        DI 80 IW TEST.
+        JNZ XRH.
+    ES: [BX] AL AND. @@ XRH.
+        AL NOT. DI
+        1 IW AND.
+        AL HPATS +[DI] AND.
+    ES: [BX] AL XOR.
+        RET.
+end-code \  ?CSP
+
+
+
+CREATE HXBITS
+            0 , 00080 , 000C0 , 000E0 , 000F0 , 000F8 , 000FC , 000FE , 000FF ,
+        080FF , 0C0FF , 0E0FF , 0F0FF , 0F8FF , 0FCFF , 0FEFF , 0FFFF ,
+
+
+
+CREATE HXPATS
+        0000 , 0FFFF , 05555 , 0AAAA ,  3333 , 06666 , 0CCCC , 08080 ,
+        0F0F , 0F0F0 ,  00FF , 0FF00 , 01111 , 02222 , 04444 , 08888 ,
+
+
+
+
+CODE C640-HL     ( row left right color -- / color+80x for xor ) \  jmp-tab 0!
+        DI POP. CX POP. DX POP. BP PUSH. BX PUSH.
+
+        AX B800 IW MOV. ES AX MOV.
+        BX DX MOV.  DL 0FE IB AND. AX 28 IW MOV. DX MUL.
+
+        BX 1 IW AND. BX 1 ROR. BX 1 ROR. BX 1 ROR.
+        AX BX ADD. ( +2000 )
+        DX DI MOV. DX 1 SAR. DX 1 SAR. DX 1 SAR. DI 0F IW AND.
+        DI INC. ( end )
+        BX CX MOV. CX 1 SAR. CX 1 SAR. CX 1 SAR. BX 0F IW AND.
+        DX AX ADD. AX CX ADD.
+
+        AL 0FE IB AND. DL 0FE IB AND. \ address even bytes only
+        BX 1 SHL.  BX HXBITS +[BX] MOV.
+        DI 1 SHL.  BP HXBITS +[DI] MOV.
+        BP NOT.
+        BX AX XCHG.
+        DI POP.
+        DI 1 SHL.
+        CX DI MOV.
+        DI 01E IW AND.
+        DI HXPATS +[DI] MOV. \ last change
+        BX DX CMP.
+        JE Done.
+@@ Long.
+        CH 1 IB TEST.
+        JNZ Xrm1.
+    ES: [BX] AX AND.
+
+@@ Xrm1.
+        AX NOT.
+        AX DI AND.
+   ES: [BX] AX XOR.
+        BX INC.
+        BX INC.
+        BX DX CMP.
+        JNE More.
+        AX BP MOV.
+        JMPS Done.
+
+@@ More.
+        AX AX XOR.
+        JMPS Long.
+
+@@ Done.
+        AX BP OR.
+        CH 1 IB TEST.
+        JNZ Xrm.
+    ES: [BX] AX AND.
+
+@@ Xrm.
+        AX NOT.
+        AX DI AND.
+    ES: [BX] AX XOR.
+        BP POP. BX POP.
+        NEXT.
+END-CODE
+
+
+A000 value PAGE-BASE      \ For EGA,VGA Page 0,  A800 for EGA Page 1
+  50 value BYTE/ROW
+
+CREATE VBITS
+        80 C, 40 C, 20 C, 10 C, 08 C, 04 C, 02 C, 01 C,
+
+
+CODE VGA4-PIX@   ( row clmn -- color )
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT BYTE/ROW +[] MOV.
+        DX POP.
+        DX MUL.
+        DI BX MOV.
+        BX 1 SAR.
+        BX 1 SAR.
+        BX 1 SAR.
+        BX AX ADD. ( offset    )
+        DI 7 IW AND.
+        CL VBITS +[DI] MOV.
+        CL NOT.
+        DI DI XOR. ( byte-mask )
+        DX 03CE IW MOV.
+        AX 0304 IW MOV.
+        AX OUT-DX.
+    ES: CH [BX] MOV.
+        CH CL OR.
+        CH 1 IB ADD.
+        DI 1 RCL.
+        AH DEC.
+        AX OUT-DX.
+    ES: CH [BX] MOV.
+        CH CL OR.
+        CH 1 IB ADD.
+        DI 1 RCL.
+        AH DEC.
+        AX OUT-DX.
+    ES: CH [BX] MOV.
+        CH CL OR.
+        CH 1 IB ADD.
+        DI 1 RCL.
+        AH DEC.
+        AX OUT-DX.
+    ES: CH [BX] MOV.
+        CH CL OR.
+        CH 1 IB ADD.
+        DI 1 RCL.
+        BX DI MOV.
+        NEXT.
+END-CODE
+
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+
+CODE VGA4-PIX!    ( x in CX   y in DX  color in AX )
+   \ Doesn't support XOR, best case read takes so long, may as well use BIOS!
+
+        BX AX MOV.
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT BYTE/ROW +[] MOV.
+        DX MUL.
+        DI CX MOV.
+        CX 1 SAR.
+        CX 1 SAR.
+        CX 1 SAR.
+        AX CX ADD.
+        DI 7 IW AND.
+        CL VBITS +[DI] MOV.
+        CH BL MOV.
+        BX AX MOV. \ byte-mask  color  offset
+
+        DX 03CE IW  MOV.
+        AX  0205 IW MOV.
+        AX OUT-DX.                      \ Set write mode 2.
+        AL 08 IB MOV.                   \ Graphics 1&2 - Bit Mask reg
+        AH  CL MOV.
+        AX OUT-DX.                      \ bit mask
+    ES: AL [BX] MOV.
+    ES: [BX] CH MOV.                    \ Load latches & write color
+        AX  FF08 IW MOV.
+        AX OUT-DX.                      \ Restore bit mask
+        AX  0005 IW MOV.
+        AX OUT-DX.                      \ Restore mode to 0.
+        RET.                            \ return from sub-routine
+end-code \   ?CSP
+
+
+
+CREATE VXBITS  0FF C,  7F C, 3F C, 1F C, 0F C, 07 C, 03 C, 01 C, 0 C,
+
+CODE VGA4-HL   ( row left right color -- / any combo of 2 colors |mask|c2.c1| )
+ \ Doesn't support XOR, best case read takes so long, may as well use BIOS!
+
+        DI POP.
+        CX POP.
+        DX POP.
+        BP PUSH.
+        BX PUSH.
+        \  jmp-tab 0!
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT BYTE/ROW +[] MOV.
+        DX MUL.
+        BP DI MOV.
+        BP 1 SAR.
+        BP 1 SAR.
+        BP 1 SAR.
+        BP AX ADD.                              \ end
+        BX CX MOV.
+        CX 1 SAR.
+        CX 1 SAR.
+        CX 1 SAR.
+        CX AX ADD.                              \ start
+        BX  7 IW AND.
+        BL VXBITS +[BX] MOV.                    \ start
+        DI  7 IW AND.
+        DI INC.
+        BH VXBITS +[DI] MOV.
+        BH NOT.
+        CX BX XCHG.                             \ end
+
+\  start-BX  start-mask-CL  end-mask-CH  end-BP    free: AX DX DI
+        DI POP.                                 \ color in DI instead of CH
+        DX 03CE IW
+        MOV. AX
+        0205 IW MOV.
+        AX OUT-DX.   \ Set write mode 2.
+
+        AH CL MOV.
+        DI FF00 IW TEST.
+        JNZ Dual.
+        BX BP CMP.
+        JE Done.
+@@ Long.
+        AL 8 IB MOV.
+        AX OUT-DX.
+    ES: AL [BX] MOV.
+        AX DI MOV.
+    ES: [BX] AL MOV.
+        AH 0FF IB MOV.
+        BX INC.
+        BX BP CMP.
+        JNE Long.
+        JMPS Done.
+@@ Dual.
+        BX BP CMP.
+        JE Done,
+
+@@ Long,
+        CL AH MOV.
+        AX DI AND.
+        AL 8 IB MOV.
+        AX OUT-DX.
+    ES: AL [BX] MOV.
+        AX DI MOV.
+        AL 1 SHR.
+        AL 1 SHR.
+        AL 1 SHR.
+        AL 1 SHR.
+    ES: [BX] AL MOV.
+        AH NOT.
+        AH CL AND.
+        AL 8 IB MOV.
+        AX OUT-DX.
+    ES: AL [BX] MOV.
+        AX DI MOV.
+    ES: [BX] AL MOV.
+        AH 0FF IB MOV.
+        BX INC.
+        BX BP CMP.
+        JNE Long,
+
+@@ Done,
+        CL AH MOV.
+        AX DI AND.
+        AL 08 IB MOV.
+        AH CH AND.
+        AX OUT-DX.
+    ES: AL [BX] MOV.
+        AX DI MOV.
+        AL 1 SHR.
+        AL 1 SHR.
+        AL 1 SHR.
+        AL 1 SHR.
+    ES: [BX] AL MOV.
+        AH NOT.
+        AH CL AND.
+
+@@ Done.
+        AL 08 IB MOV.                   \ Graphics 1&2 - Bit Mask reg
+        AH  CH AND.
+        AX OUT-DX.                      \ bit mask
+    ES: AL [BX] MOV.
+        AX DI MOV.
+    ES: [BX] AL MOV.                    \ Load latches & write color
+        AX  FF08 IW MOV.
+        AX OUT-DX.                      \ Restore bit mask
+        AX  0005 IW MOV.
+        AX OUT-DX.                      \ Restore mode to 0.
+        BP POP.
+        BX POP.
+        NEXT.
+END-CODE
+
+
+
+140 value PIX/ROW
+
+CODE VGA1-PIX@ ( row clmn -- clr )
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        DX POP.
+        AX AT PIX/ROW +[] MOV.
+        DX MUL. BX AX ADD.
+    ES: BX [BX] MOV.
+        BH BH XOR.
+        NEXT.
+END-CODE
+
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+CODE VGA1-PIX!    ( x in CX   y in DX  color in AX )  \ x140=320
+        BX AX MOV.
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT PIX/ROW +[] MOV.
+        DX MUL.
+        AX CX ADD.
+        AX BX XCHG.
+    ES: [BX] AL MOV.
+        RET.
+end-code \  ?CSP
+
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+CODE VGA1-PIXX    ( x in CX   y in DX  color in AX )  \ x140=320
+        BX AX MOV.
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT PIX/ROW +[] MOV.
+        DX MUL. AX CX ADD.
+        AX BX XCHG.
+    ES: [BX] AL XOR.
+        RET.
+end-code \ ?CSP
+
+
+\ Sample table:  CREATE COLOR-PAT.1  1 C, 2 C, 3 C, 4 C, 5 C, 6 C, 7 C, 8 C,
+
+
+CODE VGA1-HL ( row left right color|table-address  --  )
+        CX POP.
+        DI POP.
+        DX POP.
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT PIX/ROW +[] MOV.
+        DX MUL.
+        CX AX ADD.
+        AX DI ADD. AX BX XCHG.
+        AH 0FF IB TEST.
+        JNZ ColorPat.
+@@ More,
+    ES: [BX] AL MOV.
+        BX INC.
+        BX CX CMP.
+        JNA More,
+        BX POP.
+        NEXT.       ( exit to Forth)
+
+@@ ColorPat.
+        DI AX MOV.
+        SI PUSH.
+@@ More.
+        SI BX MOV.
+        BX 7 IW AND.
+        AL [BX+DI] MOV.
+        BX SI MOV.
+    ES: [BX] AL MOV.
+        BX INC.
+        BX CX CMP.
+        JNA More.
+        SI POP.
+@@ Done.
+        BX POP.
+        NEXT.
+END-CODE
+
+\ Sample table:  CREATE COLOR-PAT.1  1 C, 2 C, 3 C, 4 C, 5 C, 6 C, 7 C, 8 C,
+
+CODE VGA1-HLX ( row left right color|table-address  --  ) \  jmp-tab 0!
+        CX POP.
+        DI POP.
+        DX POP.
+        AX AT PAGE-BASE +[] MOV.
+        ES AX MOV.
+        AX AT PIX/ROW +[] MOV.
+        DX MUL.
+        CX AX ADD.
+        AX DI ADD.
+        AX BX XCHG.
+        AH 0FF IB TEST.
+        JNZ ColorPat.
+@@ More,
+    ES: [BX] AL XOR.
+        BX INC.
+        BX CX CMP.
+        JNA More,
+        BX POP.
+        NEXT.
+
+@@ ColorPat.
+        DI AX MOV.
+        SI PUSH.
+@@ More.
+        SI BX MOV.
+        BX 7 IW AND.
+        AL [BX+DI] MOV.
+        BX SI MOV.
+    ES: [BX] AL XOR.
+        BX INC.
+        BX CX CMP.
+        JNA More.
+        SI POP.
+@@ Done.
+        BX POP.
+        NEXT.
+END-CODE
+
+
+
+CODE BIOS-PIX@
+        AH 0D IB MOV.
+        CX BX MOV.
+        BX ' PAGE#@ @ 2+ +[] MOV.
+        DX POP.
+        SI PUSH.
+        BP PUSH.
+        10 INT.
+        BP POP.
+        SI POP.
+        AH AH SUB.
+        BX AX XCHG.
+        NEXT.
+END-CODE
+
+
+\ **** This is not a FORTH word.  It is a  X86 Native sub-routine ****
+CODE BIOS-PIX!
+        AH 0C IB MOV.
+        BX ' PAGE#@ @ 2+ +[] MOV.
+        SI PUSH.
+        BP PUSH.
+        10 INT.
+        BP POP.
+        SI POP.
+        RET.
+end-code \ ?CSP
+
+
+
+CODE [PIX!]    JUMP BIOS-PIX!  ?CSP
+
+
+: CALL[PIX!]      E8 C%    CA' [PIX!] ENDC @ 2+ -  W%  ;  \ MACRO
+
+(  r1 c1  r2 c2  color -- )
+( COLOR -12 +[BP]         )
+( DROW   -2 +[BP]    DCOL  -6 +[BP]     DROW/2  -A +[BP]    RINC  -E +[BP]  )
+( ROWF   -4 +[BP]    COLF  -8 +[BP]     DCOL/2  -C +[BP]    CINC -10 +[BP]  )
+
+
+CODE <LINE>
+        BP 14 IW ADD.
+        BH 0C IB MOV.
+        -12 +[BP] BX MOV.
+        BX POP.
+        AX POP.
+        CX POP.
+        DX POP.
+        SI PUSH.
+        DI AX MOV.
+        DI DX SUB.
+        JNS A+
+        DI NEG.
+@@ A+
+        SI BX MOV.
+        SI CX SUB.
+        JNS B+
+        SI NEG.
+
+@@ B+                           \  jmp-tab 0!
+        DI SI  OR.
+        JZ L=0.
+        DI DEC.
+        JNZ LINE.
+        AX PUSH. BX PUSH.
+        CLIP][ 4+ +[] DX CMP.
+        JL K1.
+        CLIP][ 6+ +[] CX CMP.
+        JL K1.
+        CLIP][ +[] DX CMP.
+        JG K1.
+        CLIP][ 2+ +[] CX CMP.
+        JG K1.
+        JMPS S1.
+@@ K1.
+        CLIP[] 4+ +[] DX CMP.
+        JL S1.
+        CLIP[] 6+ +[] CX CMP.
+        JL S1.
+        CLIP[]    +[] DX CMP.
+        JG S1.
+        CLIP[] 2+ +[] CX CMP.
+        JG S1.
+        AX -12 +[BP]  MOV.
+        CALL[PIX!]
+@@ S1.
+        CX POP.
+        DX POP.
+@@ L=0.
+        JMP LASTP.
+@@ LINE.
+        DI AX MOV.
+        SI 1 IW MOV.
+        DI DX SUB.
+        JNC L1. DI NEG.
+        SI NEG.
+@@ L1.
+        -0E +[BP] SI MOV.
+        -02 +[BP] DI MOV.
+        DI 1 SAR.
+        -0A +[BP] DI MOV.
+         DI BX MOV.
+         SI 1 IW MOV.
+         DI CX SUB.
+         JNC L2.
+         DI NEG.
+         SI NEG.
+
+@@ L2.
+        -10 +[BP] SI MOV.
+        -6 +[BP] DI MOV.
+        DI 1 SAR. -C +[BP] DI MOV.
+        -8 +[BP] BX MOV.
+        -4 +[BP] AX MOV.
+         BX BX SUB.
+         AX -2 +[BP] MOV.
+         AX -6 +[BP] CMP.
+         DI ' PAGE#@ @ 2+ +[] MOV.
+         JGE  R>=C>=0.
+
+@@ C>=R>=0.
+@@ NCOL.
+      CLIP][ 4+ +[] DX CMP. JL K2.  CLIP][ 6+ +[] CX CMP.
+      JL K2.
+
+      CLIP][    +[] DX CMP. JG K2.  CLIP][ 2+ +[] CX CMP.
+      JG K2.
+      JMPS S2.
+@@ K2.
+        CLIP[] 4+ +[] DX CMP. JL S2.  CLIP[] 6+ +[] CX CMP.
+        JL S2.
+
+        CLIP[]    +[] DX CMP. JG S2.  CLIP[] 2+ +[] CX CMP.
+        JG S2.
+
+        AX  -12 +[BP] MOV.
+        BX PUSH.
+        CX PUSH.
+        DX PUSH.
+        CALL[PIX!]
+        DX POP.
+        CX POP.
+        BX POP.
+@@ S2.
+        CX -10 +[BP] ADD.
+        BX -2 +[BP] ADD.
+        JS  RNINC.
+        BX -C +[BP] CMP.
+        JS  RNINC.
+        BX  -6 +[BP] SUB.
+        DX -E +[BP] ADD.
+@@  RNINC.
+        CX -8 +[BP] CMP.
+        JNE  NCOL.
+        JMPS  LASTP.
+
+@@ R>=C>=0. @@ NROW.
+        CLIP][ 4+ +[] DX CMP. JL K3.  CLIP][ 6+ +[] CX CMP.
+        JL K3.
+
+        CLIP][    +[] DX CMP. JG K3.  CLIP][ 2+ +[] CX CMP.
+        JG K3.
+        JMPS S3.
+@@ K3.
+        CLIP[] 4+ +[] DX CMP. JL S3.  CLIP[] 6+ +[] CX CMP.
+        JL S3.
+
+        CLIP[]    +[] DX CMP. JG S3.  CLIP[] 2+ +[] CX CMP.
+        JG S3.
+
+        AX  -12 +[BP] MOV.
+        BX PUSH.
+        CX PUSH.
+        DX PUSH.
+
+        CALL[PIX!]
+        DX POP.
+        CX POP.
+        BX POP.
+@@ S3.
+        DX  -E +[BP] ADD.
+        BX  -6 +[BP] ADD.
+        JS  CNINC.
+        BX  -A +[BP] CMP.
+        JS  CNINC.
+        BX  -2 +[BP] SUB.
+        CX -10 +[BP] ADD.
+@@  CNINC.
+        DX  -4 +[BP] CMP.
+        JNE  NROW.
+@@ LASTP.
+        CLIP][ 4+ +[] DX CMP.
+        JL K4.
+        CLIP][ 6+ +[] CX CMP.
+        JL K4.
+        CLIP][    +[] DX CMP.
+        JG K4.
+        CLIP][ 2+ +[] CX CMP.
+        JG K4.
+        JMPS S4.
+@@ K4.
+        CLIP[] 4+ +[] DX CMP.
+        JL S4.
+        CLIP[] 6+ +[] CX CMP.
+        JL S4.
+        CLIP[]    +[] DX CMP.
+        JG S4.  CLIP[] 2+ +[] CX CMP.
+        JG S4.
+        AX  -12 +[BP] MOV.
+        CALL[PIX!]
+@@ S4.  SI POP.
+        BP 14 IW SUB.
+        BX POP.
+        NEXT.
+END-CODE
+
+
+
+FORTH
+
+ DECIMAL
+  640 value CDIM    200 value RDIM  0 value LCOL  0 value UROW   8 value ROW/LN
+ 2000 value XDIM   2000 value YDIM  0 value LX    0 value LY  2000 value UX  2000 value UY
+WMAIN value GW#       7 value COLR  0 value WGRAPHICS
+
+ 0 0 2VALUE FORIG  0 0 2VALUE DORIG
+
+CREATE #R/CH     0 C,  0 C,  0 C,  0 C,  8 C,  8 C,  8 C,  0 C,
+                 8 C,  8 C,  8 C,  0 C,  0 C,  8 C,  8 C, 14 C,
+                14 C, 16 C, 16 C,  8 C, 16 C,
+
+: MAKE-GWINDOW    ( x1 y1 x2 y2 w# -- ) CREATE , , , , , ;
+
+: GWIPE           W# @ GW# >W WIPE >W ;
+
+: >GW ( gw# -- )
+        MODE@ 20 MIN  #R/CH IC@ DUP 0= ABORT" Not graphics mode"
+        WMAIN 1+ C@ 42 >
+        IF DROP 8 THEN  to ROW/LN 2drop
+
+        DUP@ to GW#  @+ to UY  @+ to UX  @+ to LY  2I@ to LX
+                     UX LX - 1+ to XDIM   UY LY - 1+ to YDIM
+        GW# 1+ C@  GW# 3+ C@ - 1+ ROW/LN *    to RDIM
+        GW#    C@  GW# 2+ C@ - 1+       8*    to CDIM
+        GW# 2+ C@                       8*    to LCOL
+        GW# 3+ C@        ROW/LN * 1- 0 MAX    to UROW
+        GW# 5+ 0C!
+        -WITHIN  UROW LCOL UROW RDIM + LCOL CDIM + CLIP-BEYOND ;
+
+: Y>ROW    (   y -- r   ) LY - RDIM YDIM */ RDIM - NEGATE UROW + ;
+: X>COL    ( x   --   c ) LX - CDIM XDIM */ LCOL + ;
+: CART>RC  ( x y -- r c ) Y>ROW SWAP X>COL ;
+: RD>RC    CDIM XDIM */ ;
+: CIRC>RC ( x y rd clr -- r c rd1 clr )  >R RD>RC >R CART>RC DR> ;
+: ?CIRC>RC    WGRAPHICS IF CIRC>RC THEN ;
+
+CODE PIX!CLIP
+        CX POP. DX POP.   \  jmp-tab 0!      \ Excludes edge
+        CLIP][ 4+ +[] DX CMP.
+        JL KEEP.
+        CLIP][ 6+ +[] CX CMP.
+        JL KEEP.
+        CLIP][    +[] DX CMP.
+        JG KEEP.
+        CLIP][ 2+ +[] CX CMP.
+        JG KEEP.
+        JMPS SKIP.
+@@ KEEP.
+        CLIP[] 4+ +[] DX CMP.
+        JL SKIP.
+        CLIP[] 6+ +[] CX CMP.
+        JL SKIP.
+        CLIP[]    +[] DX CMP.
+        JG SKIP.
+        CLIP[] 2+ +[] CX CMP.
+        JG SKIP.
+        AX BX MOV.
+        CALL[PIX!]
+@@ SKIP.
+        BX POP.
+        NEXT.
+END-CODE
+
+
+CREATE PIX!
+CREATE PIX@
+CREATE LINE
+CREATE HLINE
+CREATE BOX
+
+AT: BIOS-HL  D>R OVER DR> LINE ;
+CODE <PIX!> ( r c C - ) CX POP. DX POP. AX BX MOV. CALL[PIX!] BX POP. NEXT.  END-CODE
+
+CREATE <PIX@>      CA' BIOS-PIX@ DEFINES <PIX@>
+CREATE <HLINE>     CA' BIOS-HL   DEFINES <HLINE>
+
+HEX
+AT: WPIX!  >R  CART>RC  R>  PIX!CLIP ;
+AT: WPIX@      CART>RC      <PIX@>   ;
+AT: WLINE  >R  CART>RC 2SWAP CART>RC  R>  <LINE> ;
+AT: WHLINE >R  X>COL      >R CART>RC DR> <HLINE> ;
+
+AT: <BOX>
+        D>R  ROT    2dup <
+        IF 1+ SWAP
+        ELSE SWAP 1+ SWAP
+        THEN
+        R> -ROT
+        DO
+                2dup  I -ROT  J DUP  0FF00 AND
+                IF I J @ MOD 1+ 2* I@
+                THEN  <HLINE>
+        LOOP
+        RDROP 2drop  ;
+
+CA' <BOX> DEFINES BOX
+
+AT: WBOX   >R CART>RC 2SWAP CART>RC 2SWAP R> <BOX> ;
+
+: RECT ( n n n n color -- )
+        >R Q>R
+        I  J'  J J'  K LINE
+        I  I'  I J'  K LINE
+        J  I'  J J'  K LINE
+        TR> OVER RDROP R> LINE ;
+
+HEX
+
+-F MODE: e+mono
+ 4 MODE: c-320
+ 5 MODE: bw320
+ 6 MODE: bw640    \  For CGA EGA or VGA
+ 8 MODE: c+160
+ 9 MODE: c+320
+0A MODE: c+640    \  For PC JR only!
+0D MODE: e-320
+0E MODE: e-640
+10 MODE: e+640    \  For EGA or VGA only!
+11 MODE: vga2
+12 MODE: vga16
+13 MODE: vga256   \  For VGA only!
+
+DECIMAL
+: SETPIX!  ( #row  #clm   ca-of-an-HLINE   ca-of-[PIX!] ca-of-a-pix! --  )
+           OVER- 3 - CODES @ ROT 1+ !L
+           WGRAPHICS
+           IF DROP
+           ELSE DEFINES HLINE
+           THEN
+           1- to #CLM
+           1- to #ROW
+           -WITHIN -BEYOND  ;
+
+: >C320
+        CA' C320-HL  DUP DEFINES <HLINE>
+        CA' C320-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' C320-PIX! SETPIX! ;
+
+: >C640
+        CA' C640-HL  DUP DEFINES <HLINE>
+        CA' C640-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' C640-PIX! SETPIX! ;
+
+: >VGA4
+        CA' VGA4-HL  DUP DEFINES <HLINE>
+        CA' VGA4-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' VGA4-PIX! SETPIX! ;
+
+: >VGA1
+        CA' VGA1-HL  DUP DEFINES <HLINE>
+        CA' VGA1-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' VGA1-PIX! SETPIX! ;
+
+: >VGA1X
+        CA' VGA1-HLX DUP DEFINES <HLINE>
+        CA' VGA1-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' VGA1-PIXX SETPIX! ;
+
+: >BIOS
+        CA' BIOS-HL  DUP DEFINES <HLINE>
+        CA' BIOS-PIX@    DEFINES <PIX@>
+        CA' [PIX!] CA' BIOS-PIX! SETPIX! ;
+
+: >VGA4,80
+        >VGA4 80 to BYTE/ROW ;
+
+: C-320  c-320   200 320 >C320 ;
+: BW320  bw320  200 320 >C320 ;
+
+: BW640  bw640   200 640 >C640 ;
+
+: C+160  c+160  200 160 >BIOS ;
+
+: C+320  c+320   200 320 >BIOS ;
+: C+640  c+640  200 640 >BIOS ;
+
+: E-320  e-320   200 320 >VGA4    40 to BYTE/ROW ;
+: E-640  e-640   200 640 >VGA4,80 ;
+: E+640  e+640   350 640 >VGA4,80 ;
+: E+MONO e+mono  350 640 >VGA4,80 ;
+
+: VGA2   vga2    480 640 >VGA4,80 ;
+: VGA16  vga16  480 640 >VGA4,80 ;
+: VGA256 vga256  200 320 >VGA1   320 to PIX/ROW ;
+
+: WINDOW-GRAPHICS
+        -1 to WGRAPHICS
+        CA' WHLINE  DEFINES HLINE
+  CA' WLINE  DEFINES LINE  CA' WPIX!   DEFINES PIX!  CA' WPIX@  DEFINES PIX@
+  CA' WBOX   DEFINES BOX ;
+
+: NORMAL-GRAPHICS
+        0 to WGRAPHICS
+        ['] <HLINE> @ DEFINES HLINE
+        CA' <LINE> DEFINES LINE CA' PIX!CLIP DEFINES PIX!
+        CA' <PIX@> DEFINES PIX@
+        CA' <BOX>  DEFINES BOX  ;
+
+NORMAL-GRAPHICS
+
+:  DRAW   (  x  y -- )  DORIG 2over COLR LINE  to DORIG ;
+: +DRAW   ( dx dy -- )  DORIG V+ DRAW ;
+: FIGURE ( x y figure-array - - )
+        -ROT  2dup
+        to FORIG
+        to DORIG DUP@
+        4* 2+ 2
+        DO
+           DUP I 2I@ FORIG V+ DRAW
+        4 /LOOP
+        DROP ;
+
+DECIMAL
+100 value Y     0 value X     50 value R      3 4 2VALUE ASPECT
+
+: CIRCLE  ( y0 x0 r color - )  >R  DUP 2/ to R  to Y  0 to X  D>R
+        ASPECT <
+        IF
+          Y ASPECT */ DUP NEGATE I + I' J PIX! I + I' J PIX!
+          BEGIN  Y X >
+          WHILE  AT X 1+!  X NEGATE AT R +!  R 0< IF AT Y 1-!  Y AT R +! THEN
+               Y ASPECT */ >R  X ASPECT */ >R
+               J I  +  J' Y +  K PIX!   J I  +  J' Y -  K PIX!
+               J I  -  J' Y +  K PIX!   J I  -  J' Y -  K PIX!
+               J I' +  J' X +  K PIX!   J I' +  J' X -  K PIX!
+               J I' -  J' X +  K PIX!   J I' -  J' X -  K PIX! RDROP RDROP
+          REPEAT
+        ELSE
+          ASPECT = IF Y DUP NEGATE I + I' J PIX! I + I' J PIX! THEN
+          Y ASPECT SWAP */ DUP I I' ROT - J PIX! I SWAP I' + J PIX!
+          BEGIN  Y X >
+          WHILE  AT X 1+!  X NEGATE AT R +!  R 0< IF AT Y 1-!  Y AT R +! THEN
+               Y ASPECT SWAP */ >R  X ASPECT SWAP */ >R
+               J X +  J' I' +  K PIX!   J X +  J' I' -  K PIX!
+               J X -  J' I' +  K PIX!   J X -  J' I' -  K PIX!
+               J Y +  J' I  +  K PIX!   J Y +  J' I  -  K PIX!
+               J Y -  J' I  +  K PIX!   J Y -  J' I  -  K PIX! RDROP RDROP
+          REPEAT
+        THEN
+        RDROP RDROP RDROP ;
+
+DECIMAL  102944. 2CONSTANT HALFPI
+0   value ROW     -1  value PREVROW    0  value DROW
+0   value CLM     -1  value PREVCLM    0  value DCLM
+0   value DT     804  value DTOTAL    10  value DEN
+
+0. 2VALUE VROW    0. 2VALUE TROW      0. 2VALUE ROW0
+0. 2VALUE VCLM    0. 2VALUE TCLM      0. 2VALUE CLM0
+
+: CSPLINE ( row1 clm1 row2 clm2 rowctrl clmctrl color -- )  >R   D>R  D>R  D>R
+        -1 to PREVROW  -1 to PREVCLM   804 to DTOTAL  10 to DEN
+        0 K  J   -  to VROW          0 K' J'  -  to VCLM
+        0 K  I   -  to TROW          0 K' I'  -  to TCLM
+        0 I  VROW D-  to ROW0      0 I' VCLM D-  to CLM0  DRDROP DRDROP DRDROP
+        VROW DABS   TROW DABS D+  nip  to DROW
+        VCLM DABS   TCLM DABS D+  nip  to DCLM     DROW DCLM + to DT
+  BEGIN DTOTAL DT >  WHILE DTOTAL 2/ to DTOTAL    AT DEN 1-!  REPEAT
+        0  HALFPI DEN DSAL nip
+     DO ROW0 VROW D+ nip   to ROW
+        CLM0 VCLM D+ nip   to CLM
+        ROW PREVROW <>  CLM PREVCLM <>  OR
+                     IF ROW CLM  J  PIX!  ROW to PREVROW  CLM to PREVCLM  THEN
+        TROW  VROW DEN DSAR  D-  to TROW
+        TCLM  VCLM DEN DSAR  D-  to TCLM
+        VROW  TROW DEN DSAR  D+  to VROW
+        VCLM  TCLM DEN DSAR  D+  to VCLM
+ -1 +LOOP   RDROP ;
+
+HEX
+0E value FLOOD-COLOR
+0 value OLD-COLOR
+
+: OLD-COLOR? ( r c -- r c flag )
+        2dup <PIX@> OLD-COLOR = ;
+
+: SPREAD     ( r c -- r0 c0 r1 c1 )
+        2dup
+        BEGIN OLD-COLOR? OVER     0> AND
+        WHILE 1-
+        REPEAT
+        1+
+        2SWAP
+        BEGIN OLD-COLOR? OVER #CLM < AND
+        WHILE 1+
+        REPEAT  1- ;
+
+
+: <FLOOD> ( row0 clmn0  row1 clmn1 -- )
+        2over 2over  nip   FLOOD-COLOR  <HLINE>
+        nip   SWAP   2dup          ( row c1 c0 c1 c0 )
+        D>R
+        DO
+             DUP 1+ I OLD-COLOR?
+             IF SPREAD RDROP DUP>R RECURSE
+             ELSE 2drop
+             THEN
+        LOOP
+
+        DR>
+        DO
+             DUP 1- I OLD-COLOR?
+             IF SPREAD RDROP DUP>R RECURSE
+             ELSE 2drop
+             THEN
+       LOOP
+       DROP ;
+
+: FLOOD ( row colmn -- )
+        WGRAPHICS
+        IF      CART>RC
+        THEN    SPREAD <FLOOD> ;
+
+DECIMAL
+
+: SET-OLD-COLOR     2dup <PIX@> to OLD-COLOR ;
+
+: FIND-LEFT   ( r c -- r c-left-left c-left-end )
+   1- OLD-COLOR?    IF       BEGIN 1- OLD-COLOR? 0= UNTIL 1+ DUP      ELSE
+   1+ OLD-COLOR? 0= IF 1+ THEN
+      OLD-COLOR?    IF tuck BEGIN 1+ OLD-COLOR? 0= UNTIL 1- ROT SWAP ELSE
+                    2drop DRDROP RDROP  \ Drop temps and FIND-RIGHT return.
+                    THEN THEN ;         \ End if point missing.
+
+
+: FIND-RIGHT  ( r c -- r c-right-right c-right-end )
+   1+ OLD-COLOR?    IF       BEGIN 1+ OLD-COLOR? 0= UNTIL 1- DUP      ELSE
+   1- OLD-COLOR? 0= IF 1- THEN
+      OLD-COLOR?    IF tuck BEGIN 1- OLD-COLOR? 0= UNTIL 1+ ROT SWAP ELSE
+                    1+ DUP THEN THEN ;  \ Assume vertical if point missing.
+
+
+: HFLOOD ( row clmn-left-start row clmn-right-start -- |or| xL y xR y -- )
+             WGRAPHICS IF CART>RC 2SWAP CART>RC 2SWAP THEN    SET-OLD-COLOR
+             nip ( r cl cr )  D>R
+       BEGIN R> OVER >R FIND-LEFT  DR> FIND-RIGHT  >R ROT >R  ROT SWAP
+             FLOOD-COLOR DUP -256 AND  IF 4 PICK OVER @ MOD 1+ 2* I@ THEN
+             <HLINE>   1+ DUP 480 = UNTIL ;
+
+
+: FIND-TOP  ( r0 c0 -- rT cL rT cR )    SET-OLD-COLOR
+    BEGIN  SWAP 1- SWAP  FIND-RIGHT  nip OLD-COLOR? 0= UNTIL SWAP 1+ SWAP
+    2dup   BEGIN 1- OLD-COLOR? 0= UNTIL 1+ ;
+
+
+DECIMAL
+
+91 1VAR SIN-Q1  -182 ENDL +!  \ *64K from 0 to 90 degrees, each degree.
+
+HEX  0000 , 0478 , 08EF , 0D66 , 11DC , 1650 , 1AC2 , 1F33 , 23A1 , 280C ,
+     2C74 , 30D9 , 353A , 3996 , 3DEF , 4242 , 4690 , 4AD9 , 4F1C , 5358 ,
+     578F , 5BBE , 5FE6 , 6407 , 6820 , 6C31 , 7039 , 7439 , 782F , 7C1C ,
+     8000 , 83DA , 87A9 , 8B6D , 8F27 , 92D6 , 9679 , 9A11 , 9D9C , A11B ,
+     A48E , A7F3 , AB4C , AE97 , B1D5 , B505 , B827 , BB3A , BE3F , C135 ,
+     C41B , C6F3 , C9BB , CC73 , CF1C , D1B4 , D43C , D6B3 , D91A , DB6F ,
+     DDB4 , DFE7 , E209 , E419 , E617 , E804 , E9DE , EBA6 , ED5C , EEFF ,
+     F090 , F20E , F378 , F4D0 , F615 , F747 , F865 , F970 , FA68 , FB4C ,
+     FC1C , FCD9 , FD82 , FE18 , FE99 , FF07 , FF60 , FFA6 , FFD8 , FFF6 ,
+     FFFF ,
+
+DECIMAL
+: SINE    ( -360..360 -- n sign )
+          DUP    0<  IF 360 + THEN
+          DUP 179 >  IF 180 - -1 ELSE 0 THEN  SWAP
+          DUP  90 >  IF 180 - NEGATE THEN   SIN-Q1  SWAP ;
+
+: COSINE  ( 0..360 -- n sign )  90 + DUP 359 > IF 360 - THEN SINE ;
+
+: RD*SIN  ( radius angle -- r*sin< )   SINE >R 64K*/ R> +- ASPECT */ ;
+
+: RD*COS  ( radius angle -- r*cos< ) COSINE >R 64K*/ R> +- ;
+
+: POLAR>RC   ( radius angle -- delta-row delta-clmn )
+              2dup RD*SIN NEGATE   -ROT RD*COS ;
+
+: RADIUS>LINE ( r0 c0 rd angle -- r0 c0 r1 c1 )
+              POLAR>RC  D>R OVER R> + OVER R> + ;
+
+DECIMAL
+
+: DRAW<    WGRAPHICS IF 2dup RD*COS -ROT RD*SIN  ELSE POLAR>RC THEN +DRAW ;
+
+\ angles 0..360 degrees, on-angle and off-angle counterclockwise
+1 value +DEG             \   J   J'  K      K'
+
+: <ARC>   ( start< stop< row clmn radius color -- )
+        Q>R tuck  I I' ROT J SWAP RADIUS>LINE J' <PIX!> 2drop
+     DO J K I        RD*SIN -  J' K I        RD*COS +
+        J K I +DEG + RD*SIN -  J' K I +DEG + RD*COS +
+        2over 2over D= IF QDROP ELSE K' <LINE>  THEN
+        +DEG +LOOP   DRDROP DRDROP ;
+
+: ARC     ?CIRC>RC  1 to +DEG   <ARC> ;
+\ : CIRCLE  OVER  70 < IF 18 ELSE 6 THEN to +DEG   \ Compact, but slighty
+\           Q>R 0 360  QR>  ?CIRC>RC <ARC> ; \ slower & less well formed.
+
+       \  I   I'   J J'  K  K'
+: PIE  ( on< off< r0 c0 rad clr -- )    ?CIRC>RC  D>R Q>R
+       J J'  K  I  RADIUS>LINE 2over 2over  K' <LINE>
+       J J'  K  I' RADIUS>LINE 2over 2over  K' <LINE>
+       QR> R> R@ 1 to +DEG <ARC>
+       V+ D>R V+ DR> V+ 4/ SWAP 4/ SWAP R> to FLOOD-COLOR SPREAD <FLOOD> ;
+
+5 value #BZ2    ( # of line segments as power of 2 )
+CODE L   <% 53 8B5EF4 %> NEXT.  END-CODE
+CODE L' <% 53 8B5EF2 %> NEXT.  END-CODE
+CODE M   <% 53 8B5EF0 %> NEXT.  END-CODE
+CODE M' <% 53 8B5EEE %> NEXT.  END-CODE
+CODE N   <% 53 8B5EEC %> NEXT.  END-CODE
+
+
+: BZ-COEFS  ( x0 x1 x2 x3 -- x0' a' b' c' )                \  i   i'  j  j'
+     >R   DUP DUP + + >R  DUP DUP + + >R  DUP 2dup + + >R  \ 3x0 3x1 3x2 x3
+     DUP  NEGATE J' +  J -  I' +   J I' DUP + - I +  DR> - NEGATE  DRDROP ;
+
+
+: BEZIER  ( x0 x1 x2 x3  y0 y1 y2 y3  color -- )
+          >R  ( N         0 a  b c  )
+          BZ-COEFS Q>R  ( L L' M M' )
+          BZ-COEFS Q>R  ( J J' K K' )
+          I  K
+          1 16 #BZ2 - SAL DUP>R >R       ( I to t ; I' to delta t )
+    BEGIN J' I 64K*/   K + I 64K*/   K' + I 64K*/   J +
+          L' I 64K*/   M + I 64K*/   M' + I 64K*/   L +  2SWAP 2over N  LINE
+          I' +>R  I 0=
+    UNTIL J' K + K' + J +    L' M + M' + L +  N LINE  -11 RESERVE ;
+
+: ELLIPSE  ( row1 clmn1 row2 clmn2  row0 clmn0  color -- )
+   T>R Q>R \ I row1 I' clm1  J ..2  K ..0  L color
+   K 2* J -  K' 2* J' -
+   I I'   2over                   K I + J -     K' I' + J' -   L CSPLINE
+          K 2* I -  K' 2* I' -    OVER K + J -  OVER K' + J' - L CSPLINE
+   K 2* I -  K' 2* I' -    J J'   J I - K +     J' I' - K' +   L CSPLINE
+   J    J'                 I I'   J I + K -     J' I' + K' -   L CSPLINE
+   RDROP DRDROP DRDROP DRDROP ;
+
+FIND HASH-ON DUP ?( DROP ?HASH @ HASH-OFF )
+BEHEAD'' ROW CLM0     BEHEAD'' Y R     BEHEAD'' L BZ-COEFS
+ ?( HASH-ON )   DECIMAL

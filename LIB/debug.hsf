@@ -1,0 +1,46 @@
+HEX    (  TOOLBOX 10/3/85     COPYRIGHT 1983,1984,1985  HARVARD SOFTWORKS )
+\ TOOLBOX.FOX extensions & additions by Brian Fox  OCT 1992
+
+FIND RED   0= ?( FLOAD COLOR.HSF )
+
+\ COLOR coded WORDS
+CA' KEY        CONSTANT auser-vector
+CA' TIB        CONSTANT auser-var
+CA' auser-var  CONSTANT aconstant
+CA' .HEAD      CONSTANT acolon
+CA' LISTS      CONSTANT asegment
+CA' COM#       CONSTANT avar
+CA' @          CONSTANT acode
+
+: NFA->CA  ( nfa -- ca )  PFA CFA @ ;
+
+: COLORTYPEL  ( seg off -- )
+    FG >R
+    DUP
+    CASE
+        auser-vector OF  RED FG   ENDOF
+        auser-var    OF  WHITE FG   ENDOF
+        aconstant    OF  BLUE FG   ENDOF
+        acolon       OF  GREEN FG    ENDOF
+        asegment     OF  YELLOW FG   ENDOF
+        avar         OF  LTGRAY FG   ENDOF
+        acode        OF  LTRED  FG   ENDOF
+    END-CASE
+    TYPEL
+    R> FG ;
+
+: WORDS
+        CR
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+            OUT @ 0> IF TAB THEN
+            R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+            DUP  OUT @ + C/L @ > ?CR COLORTYPEL SPACE
+            PAUSESCREEN
+            3 - DUP  1+
+        0= UNTIL
+        DROP RDROP ;
+
+

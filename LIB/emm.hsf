@@ -1,0 +1,164 @@
+\ EMM.DOS      Expanded memory manager functions for HS/FORTH v4.11
+\ 23MAR91 Brian Fox, London Ontario Canada
+\ Reference: Programmers Guide to MS-DOS, Jump
+
+\ Special thanks to Tom Zimmer for the error handler which I saw after I
+\ had made my own.  I liked part of his better so I "borrowed" part of his"
+
+\ I have changed some of the function names to make them more in keeping
+\ with the FORTH naming conventions.  (Also I have always hated the "C" type
+\ function names that are and entire paragraph)  This is both a blessing and
+\ a curse.
+\ It makes your code more like the rest of HS/FORTH which adheres to a rigid
+\ FORTH naming convention, however if your translating code from another
+\ language you might get confused. Hey it's FORTH. If you don't like it
+\ change it!
+
+HEX
+\ functions available:
+\  40   EMM_STATUS
+\  41   EMM_SEGMENT
+\  42   EMM_AVAILABLE
+\  43   EMM_ALLOCATE
+\  44   EMM_MAP_PAGE_AREA    \ I couldn't think of a "WORD" for this concept
+\  45   EMM_RELEASE
+\  46   EMM_VERSION
+\  47   EMM_CONTEXT!
+\  48   EMM_RESTORE_CONTEXT
+\  49   EMM_#HANDLES
+\  50   EMM_#PAGES
+\  51   EMM_TOTAL_#PAGES
+
+\ To be sure that every thing is going well this word should be used after
+\ every one of the calls below.  They all return the error number on the
+\ Forth stack.
+
+: ?EMM  ( n -- )                          \ test the emm operation
+        DUP 0= IF DROP EXIT THEN >R       \ leave, there is no problem.
+        R@ 80 = ABORT" Serious EMM software problem."
+        R@ 81 = ABORT" Serious EMM hardware problem."
+        R@ 82 = ABORT" The EMM system is BUSY."
+        R@ 83 = ABORT" EMM can't find the handle specified."
+        R@ 84 = ABORT" Invalid function code passed to EMM."
+        R@ 85 = ABORT" No handles are currently available."
+        R@ 86 = ABORT" A mapping context restoration error detected."
+        R@ 87 =
+        R@ 88 =
+              OR ABORT" Requested pages exceeds available pages."
+        R@ 89 = ABORT" Could not allocate ANY pages."
+        R@ 8A = ABORT" Logical page to map is not in allocated range."
+        R@ 8B = ABORT" Physical page specified is not valid."
+        R@ 8C = ABORT" The mapping context save area is full."
+        R@ 8D = ABORT" Attempt to save context of already saved handle."
+        R@ 8E = ABORT" Attempt to restore context without saving first."
+        R@ 8F = ABORT" Subfunction passed is not defined."
+        R> CR ." Received EMM error code " U. ABORT ;
+
+
+\ GET-VECTOR
+HEX
+CODE GET-VECTOR ( INT# -- seg adr )
+        AL BL MOV.
+        AH 35 IB MOV.
+        21 INT.
+        ES PUSH.
+NEXT. END-CODE
+
+: EMM_STATUS ( -- )
+    67 GET-VECTOR 0= SWAP 0= AND ABORT" EMM driver not installed."
+    4000 0 0 0 67 INTCALL  ?EMM ;
+
+CODE EMM_SEGMENT  ( -- seg ? )      \ ? = 0 = all ok
+        BX PUSH.
+        AX 4100 IW MOV.
+        67 INT.
+        BX PUSH.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_AVAILABLE ( -- total-pages, Unallocated-pages, ? )
+        BX PUSH.
+        AX 4200 IW MOV.
+        67 INT.
+        DX PUSH.
+        BX PUSH.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_ALLOCATE ( page-cnt-request -- handle, ? )
+        AX POP.
+        BX PUSH.          \  SWAP the stack
+        BX AX MOV.
+        AX 4300 IW MOV.
+        67 INT.
+        DX PUSH.
+        AX BX MOV.
+NEXT. END-CODE
+
+\ Bring a piece of memory into one of the "memory windows"
+CODE EMM_PAGE ( handle, #pages, area -- ? )
+        AL BL MOV.
+        AH 44 IB MOV.     \ STUPID EH?
+        BX POP.
+        DX POP.
+        67 INT.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_RELEASE ( handle -- ? )
+        DX BX MOV.
+        AX 4500 IW MOV.
+        67 INT.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_VERSION ( -- n )
+        BX PUSH.
+        AX 4600 IW MOV.
+        67 INT.
+        BX AX MOV.
+NEXT. END-CODE
+
+\ This function must request a new handle to use for saving the current
+\ EMM context. Then it must move that handles memory into the page window
+\ using function 44H. ( EMM_PAGE )
+CODE EMM_SAVE_CONTEXT ( handle -- ? )
+        DX BX MOV.
+        AX 4700 IW MOV.
+        67 INT.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_RESTORE_CONTEXT ( handle -- ? )
+        DX BX MOV.
+        AX 4900 IW MOV.
+        67 INT.
+        BX AX MOV.
+NEXT. END-CODE
+
+\ Returns the total number of assigned handles or 0
+CODE EMM_HANDLES ( -- handle-count, ? )
+        BX PUSH.
+        AX 4B00 IW MOV.
+        67 INT.
+        BX PUSH.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_#PAGES  ( handle -- #pages for the handle, ? )
+        DX BX MOV.
+        AX 4C00 IW MOV.
+        67 INT.
+        BX PUSH.
+        BX AX MOV.
+NEXT. END-CODE
+
+CODE EMM_TOTAL_#PAGES ( seg adr -- handle-cnt, ? )
+        DI BX MOV.
+        ES POP.
+        AX 4D00 IW MOV.
+        67 INT.
+        BX PUSH.
+        BX AX MOV.
+NEXT. END-CODE
+

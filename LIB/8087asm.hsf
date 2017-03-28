@@ -1,0 +1,140 @@
+\ 8087 MNEMONICS - EXTENSION TO 8088ASM
+
+HEX (                  COPYRIGHT 1984 HARVARD SOFTWORKS, ALL RIGHTS RESERVED )
+ASSEMBLER DEFINITIONS
+
+: ?FREG ( 0..7  --  )
+        DUP FFF8 AND  ABORT" STACK INDEX? "  ;
+
+: ?STK   DSTI @ 1+    ABORT" STACK ONLY "  ;
+
+: ESC.  (       esc#:0..3F  --  )
+        ( 0..7  esc#:0..3F  --  )   ( 0..7 is fstack index or command selecter )
+        DSTI @ -1 = IF ARG-INIT THEN
+        ARG-SET   DUP  FFC0  AND  ABORT" ESC CODE TOO LARGE "
+        DUP 7 AND 800 *   SWAP 38 AND 8/ OR  D8 OR
+        SRC @ 1+  ABORT" 2 OPERANDS "
+        DST @ 1+  IF    DST @ DUP  78FF AND  ABORT" NOT MEM OP "
+                  ELSE  SWAP ?FREG    DUP 100 * + C000 OR
+                  THEN  ARL-1OP ;
+
+: WESC.      9B C%  ESC. ;
+
+VARIABLE FTYP
+
+: FTYP!  CREATE , DOES> @ FTYP ! ;
+
+
+
+0 FTYP! R32     1 FTYP! I32     2 FTYP! R64     3 FTYP! I16
+4 FTYP! I64     5 FTYP! TREAL   6 FTYP! BCD     7 FTYP! STK
+I16
+
+VARIABLE FLD&     1808 FLD&    !  28 C,  38 C,  3D C,  1D C,  3C C,  08 C,
+VARIABLE FSTP&    1B0B FSTP&   !  2B C,  3B C,  3F C,  1F C,  3E C,  2B C,
+VARIABLE FST&     1A0A FST&    !  2A C,  3A C,  -1 C,  -1 C,  -1 C,  2A C,
+VARIABLE F&       1000 F&      !  20 C,  30 C,  -1 C,  -1 C,  -1 C,  00 C,
+
+
+(  I32       ALPHA +[BX] FLD.   or   n FLD.   where n:0..7  )
+
+: ESC#
+        DSTI @ 1+
+        IF   FTYP  @
+        ELSE       7
+        THEN IC@ ;
+
+
+    : F&ESC#W  CREATE ,   DOES>   @  F& ESC#  OR  WESC. ;
+    : ?STKW    CREATE ,   DOES>   @     ?STK      WESC. ;
+    : IWESC    CREATE , , DOES>  2@  INIT0        WESC. ;
+
+: FLD.     FLD&   ESC#          WESC. ;
+: FSTP.    FSTP&  ESC#          WESC. ;
+: FST.     FST&   ESC#          WESC. ;
+
+02  F&ESC#W FCOM.
+03  F&ESC#W FCOMP.
+33  1 IWESC FCOMPP.
+09  ?STKW   FXCH.
+0C  4 IWESC FTST.
+0C  5 IWESC FXAM.
+0D  6 IWESC FLDZ.
+0D  0 IWESC FLD1.
+0D  3 IWESC FLDPI.
+0D  1 IWESC FLDL2T.
+0D  2 IWESC FLDL2E.
+0D  4 IWESC FLDLG2.
+0D  5 IWESC FLDLN2.
+
+\
+00  F&ESC#W FADD.
+20  ?STKW   FADD".
+30  ?STKW   FADDP.
+04  F&ESC#W FSUB.        05 F&ESC#W FSUBR.
+24  ?STKW   FSUB".       25 ?STKW   FSUBR".
+34  ?STKW   FSUBP.       35 ?STKW   FSUBRP.
+01  F&ESC#W FMUL.
+21  ?STKW   FMUL".
+31  ?STKW   FMULP.
+06  F&ESC#W FDIV.        07 F&ESC#W FDIVR.
+26  ?STKW   FDIV".       27 ?STKW   FDIVR".
+36  ?STKW   FDIVP.       37 ?STKW   FDIVRP.
+
+( d R                   P        P                                           )
+( 0 0   ST0-/STN->ST0                     FSUB.                ST0-/M->ST0   )
+( 0 1   STN-/ST0->STN                     FSUBR.               M-/ST0->M     )
+( 1 0   STN-/ST0->STN   0 nopop  1 pop    FSUB".   FSUBP.                    )
+( 1 1   ST0-/STN->ST0   0 nopop  1 pop    FSUBR".  FSUBRP.                   )
+
+0F  2 IWESC FSQRT.
+0F  5 IWESC FSCALE.
+0F  0 IWESC FPREM.
+0F  4 IWESC FRNDINT.
+0E  4 IWESC FXTRACT.
+0C  1 IWESC FABS.
+0C  0 IWESC FCHS.
+0E  2 IWESC FPTAN.
+0E  3 IWESC FPATAN.
+0E  0 IWESC F2XM1.
+0E  1 IWESC FYL2X.
+0F  1 IWESC FYL2XP1.
+
+: FINIT.     3  1C INIT0    ESC. ;
+
+1C  0 IWESC FENI.
+1C  1 IWESC FDISI.
+
+: MWESC
+        CREATE ,
+        DOES>  @  DSTI @ -1 = ABORT" WHERE?"   WESC. ;
+
+0D    MWESC FLDCW.
+0F    MWESC FSTCW.
+2F    MWESC FSTSW.
+1C  2 IWESC FCLEX.
+0E    MWESC FSTENV.
+0C    MWESC FLDENV.
+2E    MWESC FSAVE.
+2C    MWESC FRSTOR.
+0E  7 IWESC FINCSTP.
+0E  6 IWESC FDECSTP.
+28    ?STKW FFREE.
+0A  0 IWESC FNOP.
+9B    CMD0  FWAIT.
+
+CODE FINIT
+        FINIT.
+        NEXT.
+END-CODE
+
+FINIT \ initialize the floating point system
+
+
+BEHEAD' ARG-INIT   BEHEAD' ARG-SET   BEHEAD' DST  BEHEAD' DSTI
+BEHEAD' ARL-1OP                      BEHEAD' SRC  BEHEAD' SRCI
+BEHEAD' ?FREG      BEHEAD' FTYP!     BEHEAD' ?STK BEHEAD' MWESC
+BEHEAD'' FLD& IWESC
+
+DECIMAL FORTH DEFINITIONS
+

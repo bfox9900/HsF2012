@@ -1,0 +1,22 @@
+\ CAPS.HSF  allows case insensitive operation for HSF2000
+
+\ PFM from Jim Kalihan, author of HS/Forth (PFM = Pure f...ng magic)
+
+CODE <FIND>X  ?CSP                                                  \ create a stub code word
+CA'  <FIND>   DEFINES <FIND>X                                       \ assign the same code address as <FIND>
+
+: >CAPS                                                             \ convert a string to UPPER case
+        COUNT OVER + SWAP
+        DO
+            [% <% 8B7E00 8A05 3C61 7C08 3C7A 7F04 2C20 8805 %> %]   \ uses inline machine code! Who knew?
+        1 /LOOP ;
+
+AT: <FIND>C      HERE   >CAPS  <FIND>X  ;
+
+: -CAPS     CA' <FIND>  DEFINES <FIND> ;                            \ re-define <FIND> with No upper case conversion
+:  CAPS     CA' <FIND>C DEFINES <FIND> ;                            \ re-define <FIND> with upper case conversion
+
+ DECIMAL EXIT 
+ 
+
+

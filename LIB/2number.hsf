@@ -1,0 +1,21 @@
+
+variable dsign
+
+: >d ( a u -- d | convert string to a signed double )
+    0 0 2SWAP
+    \ skip leading spaces and tabs
+    BEGIN 
+      OVER C@ DUP BL = SWAP 9 = OR 
+    WHILE 
+       1 /string 
+    REPEAT
+    ?DUP IF
+        FALSE dsign !
+        OVER C@
+        CASE
+            [char] - OF  TRUE dsign !  1 /string  ENDOF
+            [char] + OF  1 /string   ENDOF
+        ENDCASE
+        >NUMBER 2DROP
+        dsign @ IF DNEGATE THEN
+    ELSE DROP THEN ;

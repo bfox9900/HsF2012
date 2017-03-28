@@ -1,0 +1,193 @@
+\ FOOPS.HAS     Copyright 1989, Harvard Softworks, All rights reserved
+
+[undefined] $FINDL [if] include STRINGS.hsf [then]
+
+[undefined] ADD$L [if] include DSTRINGS.hsf [then]
+
+\ [undefined] DO:   [if] include VECTORS.hsf [then]
+
+
+HEX
+CODE 4+!
+        <% FF07 FF07 FF07 FF07 5B %>
+END-CODE
+
+
+CODE 4-!
+        <% FF0F FF0F FF0F FF0F 5B %>
+END-CODE
+
+
+CODE %T@
+        <% 8B07 50 8B4702 50 8B5F04  %>
+END-CODE
+
+CODE %TLIT
+        <% 53 FF34 46 46 FF34 46 46 8B1C 46 46 %>
+END-CODE
+
+
+CODE DO-PROP
+END-CODE    \ dummy id
+
+: STACK     ( #items - )
+        CREATE 4* DUP 2+ DUP D, ALLOT 0 ,
+        ;' DOVAR
+
+20 STACK OBJ-STACK
+
+
+
+: OBJ-PUSH  ( seg-para# offset -- )
+        OBJ-STACK  ++@ 4- DUP 0= ABORT" OBJ-STACK full"  OVER 4-! ID! ;
+\ Note: OBJ-INST is given  seg-dscr  but pushes  seg-para#
+
+
+
+: OBJ-INST  ( offset  seg-dscr  -- )    @ SWAP   OBJ-PUSH ;
+
+\ : OBJ-POP   ( -- seg offset )
+\             OBJ-STACK  DUP 2@ = ABORT" OBJ-STACK empty"  ++@ OVER 2+! ID@ ;
+
+: OBJ-DROP  ( -- )
+        OBJ-STACK DUP 2@ = ABORT" User stack empty"  2+ 4+! ;
+
+: OBJ-S@    ( -- seg offset )
+        OBJ-STACK  ++@ ID@ ;
+
+: OBJ-PROP  ( prop-offset -- )
+        OBJ-S@ ROT + OBJ-PUSH ;
+
+4000 SEGMENT OBJECTS
+
+OBJECTS  value OBJECT-SEG
+OBJECTS @ 0 4000 0 FILLL
+
+4000 SEGMENT MESSAGES  MESSAGES MAKE-$SEG
+
+     $" INIT" ADD$L DROP     $" 's" ADD$L DROP
+
+
+0 value *METHOD-PTR      \ Pointers into class descriptor, update in METHOD$LABEL
+0 value *SIZE-PTR
+
+: FIELD-ADR  ( offset-into-record -- seg offset )
+                      OBJ-STACK ++@ ID@ ROT  + ;
+: field ( #bytes -- )
+        CREATE  *SIZE-PTR @ DUP ,  + *SIZE-PTR !  IMMEDIATE
+        DOES> ?COMP  @ [COMPILE] LITERAL  COMPILE FIELD-ADR ;
+
+: FIELDS-ADR  ( item# offset-into-record byte-width -- seg offset )
+              ROT U* DROP + FIELD-ADR ;
+
+
+: fields ( #items byte-width -- )   \ pfa: offset  byte-width  ( #items )
+     CREATE 2dup U* DROP *SIZE-PTR @ DUP ,  + *SIZE-PTR ! , DROP  IMMEDIATE
+     DOES>  ?COMP   2@ [COMPILE] 2literal COMPILE FIELDS-ADR ;
+
+  1 CONSTANT byte
+  2 CONSTANT single
+  4 CONSTANT double
+\ 6 CONSTANT triple  8 CONSTANT quad    4 CONSTANT r32   8 CONSTANT r64 \ etc
+
+
+: FIND-MESSAGE  ( addr$ -- addr$ # flag )
+                DUPC@ 0= ABORT" Null message"  FIND$L 2swap 2drop ;
+
+
+: FIND.MESSAGE  ( addr$ -- # )  FIND-MESSAGE  0=
+                IF DROP  $. ."  is not a method." ABORT ELSE nip THEN ;
+
+: FIND-METHOD   ( msg# link -- cfa )
+                BEGIN DUP 0= ABORT" Not applicable." 2dup 2I@ -
+                WHILE @      REPEAT nip 4+  ;
+
+: PROPERTY  ( old-class-ptr   --  delta  new-class-ptr )
+            2I@   BL AWORD FIND.MESSAGE   SWAP FIND-METHOD
+            DUP@   CA' DO-PROP - ABORT" Not a property."   2+ 2@ ;
+
+: DO.METHOD     ( method-cfa  struct-offset  struct-seg-dsc -- ... )
+                OBJ-INST  EXECUTE OBJ-DROP ;
+
+
+: DO-INSTANCE   ( dadr-struct class-ptr --  .... )
+                BEGIN
+                        BL AWORD  FIND.MESSAGE   \ dadr-struct class-ptr msg#
+                        DUP 2 =
+                        IF DROP  PROPERTY  >R ROT + SWAP R>  [ 2swap ]
+                AGAIN
+                THEN
+                SWAP  2I@  FIND-METHOD  -ROT  ( method-cfa  dadr-struct )
+                STATE @
+                IF  COMPILE %TLIT  T,  COMPILE DO.METHOD
+                ELSE DO.METHOD
+                THEN ;
+
+: DO.PROPERTY   ( method-cfa  property-offset  -- ... )
+                OBJ-PROP  EXECUTE OBJ-DROP ;
+
+: DO-PROPERTY   ( property-offset  class-ptr --  .... )
+                BEGIN  BL AWORD  FIND.MESSAGE   \ property-offset class-ptr msg#
+                       DUP 2 =
+                       IF DROP
+                          PROPERTY  -ROT + SWAP  [ 2swap ]
+                AGAIN
+                THEN
+                SWAP  2I@  FIND-METHOD   SWAP  ( method-cfa  property-offset )
+                [COMPILE] 2literal  COMPILE DO.PROPERTY ;
+
+
+
+\ DO: DO.PROP       2@ >R    ( property-offset     r: class-ptr )
+\                   OBJ-S@ nip +  OBJECT-SEG R>  DO-INSTANCE ;
+\ CA' DO.PROP DEFINES DO-PROP
+
+                       \  do-instance, dadr-structure, class-ptr , link
+: INSTANCE ( class-pfa -- )  CREATE   >R
+                OBJECT-SEG 4I@ OBJECT-SEG   OBJ-INST
+                OBJECT-SEG DUP 4I@ SWAP     D,  R@ ,
+                OBJECT-SEG R@  @ ALLOTL
+                R@ 2I@ BEGIN ?DUP
+                    WHILE DUP 2I@ 1 = IF DUP>R 4+ EXECUTE R> THEN  @
+                   REPEAT OBJ-DROP
+                HERE 2+   R> 4+  DUP@ ,  !        IMMEDIATE
+        DOES>  %T@ DO-INSTANCE ;
+
+0 value CLASS-FENCE
+0 value &DO-CLASS
+                \  do-class,  struct-size,  adr-last-method-ptr  ,  toplink
+: CLASS:   CREATE   0 ,  HERE-L IS *SIZE-PTR
+                    0 ,  HERE-L IS *METHOD-PTR  HERE-W IS CLASS-FENCE  0 ,
+           DOES>  [ HERE IS &DO-CLASS ]    INSTANCE ;
+
+: INHERIT>         [COMPILE] '  2@  *SIZE-PTR 2! ;
+
+AT: METHOD$LABEL   ( addr$ -- ) 
+            FIND-MESSAGE  IF nip  ELSE DROP ADD$L THEN \ s:  index
+            align HERE-L *METHOD-PTR @ ,  *METHOD-PTR ! ( index )  , OKLW ;
+: METHODS>  CA' METHOD$LABEL  DEFINES $LABEL ;
+: XLBL      CA' $LABEL        DEFINES $LABEL ;
+: HAS>      [COMPILE] '
+            DUP 4- 2@ &DO-CLASS CA' FORTH D= NOT ABORT" Not a class."
+            DUP@ ( class-ptr  struct-size )
+                          \  do-property,  offset,  class-ptr
+            METHODS> CREATE XLBL
+            *SIZE-PTR @ DUP , + *SIZE-PTR ! ,         ;' DO-PROP
+: ;CLASS    XLBL   CLASS-FENCE ENDW ! OKLW   HASH-ON  ;
+
+\           self DRAW      or     self BODY DRAW
+: self      BL AWORD  FIND.MESSAGE  *METHOD-PTR @  FIND-METHOD ( method-cfa )
+            DUP@  CA' DO-PROP =
+        IF  2+ 2@ DO-PROPERTY     ELSE  ,  THEN ; IMMEDIATE
+
+: DO-METHOD ( method-cfa instance-pfa -- )  2@  OBJ-INST  EXECUTE  OBJ-DROP ;
+: APPLY-MESSAGE  ( message#   instance-pfa -- )
+                 UNDER  4I@ 2I@ FIND-METHOD  SWAP DO-METHOD ;
+
+
+: FOR-ALL   [COMPILE] CFA' 6+  THE >IN SWAP    \  ie, 5 5 FOR-ALL robot MOVE
+            BEGIN  @  ?DUP
+            WHILE  OVER IS >IN  UNDER D>R   6 - %T@ DO-INSTANCE  DR>
+            REPEAT  DROP  ;
+
+

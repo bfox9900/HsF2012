@@ -1,0 +1,63 @@
+( ANS-Forth CASE STATEMENT: CEE 9/80 FORTH DIMENSIONS  II/3 PG 37 )
+\ Apr 20 2008 speed up using inline:  Not done. not real need
+\ Oct 5 2015 fixed big bug in ?OF.  added dup.  Tested with program at bottom.
+\            FACTORED out <OF> to save space (18 bytes)
+\ Nov 26 2015 replaced COMPILE AND [COMPILE] with POSTPONE
+
+: CASE     ?comp  CSP @ !CSP 4 ; IMMEDIATE
+
+: <OF>
+        POSTPONE 0BRANCH                              \ common factor to save space
+                 HERE 0 ,
+        POSTPONE DROP
+        5 ; IMMEDIATE
+
+
+ : OF   ( n1 n2 -- here )           \ test for n1=n2
+        4 ?PAIRS
+        POSTPONE over
+        POSTPONE =
+        POSTPONE <OF> ; IMMEDIATE
+
+\ non ans forth extension
+: ?OF   ( flag -- here )               \ test if flag<>0 (binary flag)
+        4 ?PAIRS
+        POSTPONE DUP
+        POSTPONE <OF> ; IMMEDIATE
+
+: ENDOF
+        5 ?PAIRS
+        POSTPONE BRANCH
+                HERE 0 , SWAP 2    \ 2 is put on stack for later, to test for matching if/then pairs
+        POSTPONE THEN
+        4 ; IMMEDIATE
+
+
+: ENDCASE
+        4 ?PAIRS
+        POSTPONE DROP
+        BEGIN
+           SP@ CSP @ <>
+        WHILE
+            2  POSTPONE THEN      \ the '2' is needed to for HsForth IF/THEN error check
+        REPEAT
+        CSP ! ;  IMMEDIATE
+
+
+0 [IF]
+
+: TEST
+
+
+       CASE
+          0 OF  ." ZERO"            ENDOF
+          1 OF  ." one"             ENDOF
+          2 OF ." TWO "             ENDOF
+          3 OF ." THREE "           ENDOF
+     2 and ?OF ." Bit 2 is set"     ENDOF
+
+            ." Default case"
+      ENDCASE
+;
+
+[THEN]

@@ -1,0 +1,49 @@
+\ COLOR WORDS   for HS/FORTH v 4.1            10FEB91 FOX
+\ This lexicon can be used to control the color of the screen.
+\ The words FG and BG set the foreground and background colors
+\ as the case may be. The word FG&BG is used to combine two colors
+\ into one integer especially good for making window descriptors.
+\ Examples:
+\        0 0 WHITE BLUE FG&BG  0 0 23 60 MAKE-WINDOW EXAMPLE
+\        RED LTGREEN FG&BG WATRC!
+\
+\ The color names all work except the ones greater than 7 (ltgray) WILL
+\ BLINK if used in the BACKGROUND. That's not a BUG that's a feature :-)
+
+\ Sep 12 2009:  changed BG to use LSHIFT (ANS Forth word)
+
+HEX
+         0 CONSTANT BLACK
+         1 CONSTANT BLUE
+         2 CONSTANT GREEN
+         3 CONSTANT CYAN
+         4 CONSTANT RED
+         5 CONSTANT MAGENTA
+         6 CONSTANT BROWN
+         7 CONSTANT LTGRAY
+
+        08 CONSTANT DKGRAY
+        09 CONSTANT LTBLUE
+        0A CONSTANT LTGREEN
+        0B CONSTANT LTCYAN
+        0C CONSTANT LTRED
+        0D CONSTANT LTMAGENTA
+        0E CONSTANT YELLOW
+        0F CONSTANT WHITE
+
+
+\ Combines fg & bg to 1 byte
+: FG&BG  ( FG color, BG color -- byte ) 4 LSHIFT + ;            \ for use with MAKE-WINDOW
+
+\ Set the color of entire window
+: FG&BG!   FG&BG WATRS! ;
+
+\ these words change only the character atribute. they are best used
+\ for placing different colored type in a particular place.
+: FG    ( color --) WATRC  F0 AND OR WATRC! ;                    \ set foreground color
+: BG    ( color --) 4 LSHIFT WATRC 0F AND +  WATRC! ;            \ set background color
+
+\ set scroll attribute the same as the character attribute
+: COLORSET  WATRC WATRS! ;                                      \ set the FG & BG to the whole window
+
+DECIMAL

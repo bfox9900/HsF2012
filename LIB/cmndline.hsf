@@ -1,0 +1,36 @@
+\ CMNDLINE.hsf, interpret the DOS command line at start of program
+\ 1MAR91 FOX
+\
+\ ---------------------------------------------------------------------------
+\ Change History
+\ changed to support maximum length strings, 128 byte
+\ created a commandline buffer in the LISTS segment (easier to work with)
+\ July 2007 Modified for HSF2000 to just use the string stack as a temp buffer :-)
+\ JAN 2016  changed command$l to ARG$L
+\           changed name to ARGS[], returns ANS Forth addr len
+
+DECIMAL
+\ DOS command line arguments are just a FAR counted string
+\ This string always has a leading space that can screw up
+\ some primitive DOS functions so we cut in out in the transfer into HSF PAD
+
+  : ARG$L  ( -- seg offset)    CODES @  128 ;              \ counted string begins at byte 128 in PSP
+  : arglen ( -- n )  arg$l c@l 1- 0 max ;                  \ read count byte, subtract leading space length
+
+: ARGS[]  ( -- caddr  )
+        ARG$L 2 +  LISTS @ PAD 1+  ARGLEN CMOVEL           \ move command line minus count & leading blank to PAD+1
+        pad arglen over c!  ;                              \ put the length into PAD & return counted string
+
+EXIT
+
+\ ***************   OLD CODE removed July '07 *********************
+
+hex
+\  OFFICIAL DOS call to get the program segment prefix (PSP)
+\  Not really needed since this is the "CODES" segment in HS/FORTH
+\ CODE PSP-SEG ( -- seg )
+\        BX PUSH.
+\        AX 6200 IW MOV.
+\        21 INT.
+\        NEXT.
+\ END-CODE

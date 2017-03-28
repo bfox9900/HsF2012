@@ -1,0 +1,6 @@
+code PICK       ( n -- n')
+                BX BX ADD.              \ multiply BX by 2
+                BX SP ADD.              \ add the stack pointer offset
+            SS: BX [BX] MOV.            \ fetch the value at the address in BX and return to BX
+                next.
+end-code

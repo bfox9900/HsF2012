@@ -1,0 +1,125 @@
+\ HIGH LEVEL FLOW CONTROL COPYRIGHT 1983,1984  HARVARD SOFTWORKS
+\ Added to the assembler because it just has to be there for Forth Asm  BFox
+
+HEX
+ONLY FORTH ALSO ASSEMBLER DEFINITIONS
+
+[undefined] mov. [if] include 8088asm.hsf [then] 
+
+
+\ define macros used for hi level flow control
+
+: BXBXOR        bx   bx or. ;
+: BXPUSH        bx push. ;
+: BPINC2        bp inc.  bp inc. ;
+: BPDEC2        bp dec.  bp dec. ;
+: DI<-BX        di   bx mov. ;
+: BXPOP         bx pop. ;
+: DIINC         di inc. ;
+: DIBXADD       di   bx add. ;
+: DI<-SI        di   si mov. ;
+: SIPOP         si pop. ;
+: DISICMP       di   si cmp. ;
+: [BP]<-SI     [bp]  si  mov. ;
+: [BP]<-DI     [bp]  di  mov. ;
+: SI<-[BP]      si  [bp] mov. ;
+: DI<-[BP]      di  [bp] mov. ;
+
+
+\ define some assembler helpers *******************************************
+: ?SHORT
+        DUP FF80 AND DUP 0= SWAP FF80 = OR NOT 12 ]ASMERR ;
+
+: BRANCH-BACK
+        C%  HERE-C - 1- ?SHORT C% ; ( dest jumpcode -- )
+
+: IF-T.
+        bx bx or.  74 C%   HERE-C  0 C% 212 ;
+
+: ELSE.
+        212    ?PAIRS   0EB C%   HERE-C  0 C%
+        SWAP  HERE-C OVER-  1- ?SHORT  CODES @ ROT C!L   212 ;
+
+: THEN.
+        212  ?PAIRS   HERE-C OVER-  1- ?SHORT  CODES @ ROT C!L ;
+
+: BEGIN.
+        HERE-C  111 ;
+
+: AGAIN.
+        111  ?PAIRS
+        0EB BRANCH-BACK ;
+
+: UNTIL-T.
+        111  ?PAIRS   BXBXOR
+        074 BRANCH-BACK ;
+
+: WHILE-T.
+        DUP 111  ?PAIRS
+        IF-T.    2* ;
+
+: WHILE-BELOW.
+        DUP 111  ?PAIRS   076 C%
+        HERE-C 0 C% 424 ;
+
+: REPEAT.
+        D>R   AGAIN.   DR>  2/ THEN. ;
+
+: SIDI>R
+         [BP]<-SI BPINC2 [BP]<-DI ;
+
+: R>SIDI
+        DI<-[BP] BPDEC2   SI<-[BP] BPDEC2 ;
+
+: ?DOLOOP
+        313 ?PAIRS ;
+: DO-.
+        SIDI>R   DI<-BX    SIPOP
+        HERE-C  313  ;
+
+: LOOP.
+        ?DOLOOP  DIINC   DISICMP
+        078 BRANCH-BACK  R>SIDI ;
+
+: /LOOP-.
+        ?DOLOOP  DIBXADD DISICMP   072 BRANCH-BACK  R>SIDI ;
+
+: +LOOP-.
+        ?DOLOOP  DIBXADD  BXBXOR  0678  W%
+        DUP   DISICMP   078 BRANCH-BACK  04EB W%
+        DISICMP   079 BRANCH-BACK  R>SIDI ;
+
+: I.
+        BXPUSH FB89 W% ;
+: J.
+        BXPUSH 5E8B W% 0 C% ;
+
+: LEAVE.  DI SI  mov. ;
+
+: IF.
+        BXBXOR    BXPOP   74 C%   HERE-C  0 C%          212 ;
+
+: UNTIL.
+        111  ?PAIRS   BXBXOR  BXPOP     074 BRANCH-BACK ;
+
+: WHILE.
+        DUP 111  ?PAIRS   IF. 2* ;
+
+: DO.
+        SIDI>R   DI<-BX    SIPOP   BXPOP  HERE-C  313  ;
+
+: /LOOP.
+        ?DOLOOP  DIBXADD  BXPOP DISICMP   072  BRANCH-BACK  R>SIDI ;
+
+: +LOOP.
+        ?DOLOOP  DIBXADD  BXBXOR  BXPOP  0678  W%
+         DUP   DISICMP   078  BRANCH-BACK  04EB W%
+         DISICMP   079  BRANCH-BACK  R>SIDI ;
+
+BEHEAD' BRANCH-BACK
+BEHEAD'' SIDI>R ?DOLOOP
+
+
+
+DECIMAL FORTH DEFINITIONS
+

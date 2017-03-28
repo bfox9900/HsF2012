@@ -1,0 +1,10 @@
+\ Number BASE conversion tools for the programmer
+DECIMAL
+: BINARY 2 IS BASE ;
+: OCTAL  8 IS BASE ;
+
+: .B   THE BASE >R  BINARY U.  R> IS BASE ;
+: .H   THE BASE >R  HEX    U.  R> IS BASE ;
+: .O   THE BASE >R  OCTAL  U.  R> IS BASE ;
+: .DEC THE BASE >R  DECIMAL U. R> IS BASE ;
+

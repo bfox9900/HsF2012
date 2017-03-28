@@ -1,0 +1,68 @@
+ \ MFILES.FOX    A higher level file interface              29FEB92 FOX
+
+0 [IF]
+        This file interface is based on ANS/ISO Forth but as with all things
+        with HSF2000 it is not quite 100% compatible. All strings are counted
+        ie: like Pascal strings with an 8 bit count byte as the first byte
+        of the string. Also since we don't have the complete source code to
+        HS/Forth we are relying on existing words. Therefore the file words
+        use HS/Forth's fastest file access method which is streaming buffered
+        file I/O.
+
+        Stack comment semantics:
+               ior      ..  I/O result
+               fileid   ..  the file handle
+               fam      ..  "file access method", R/W permission etc.
+
+
+[then]
+
+HEX
+
+forth definitions
+
+800 SEGMENT FILE-BUFF
+
+forth definitions
+
+$" dummy  file spec string space                          " FILE-BUFF FILE: FDB1
+
+
+: FNAME!  ( $ -- )   FDB1  FILE @ $! ;
+
+DECIMAL
+: MHANDLE@ ( -- handle of ACTIVE file)  THE MHANDLE ;
+
+: ?fopen   ( -- ) mhandle@ 0= ABORT" No Mfile opened" ;
+
+: PTR!    ( 32bit file-PTR --)  MHANDLE@ LSEEK 2drop ;
+
+: FILE-POSITION ( fileid -- d  ior) 0 0 rot LSEEK+ ;
+
+: FILE-SIZE   ( -- ud ior )   PTR@ D>R 0 0 MHANDLE@ LSEEK++   DR> PTR! ;
+
+: RESTORE ( -- )  
+          0 0 MHANDLE@ LSEEK DROP
+          0 THE SEG 4I!
+          FR ;                  \ sets R# & COL to 1
+
+: EOF?   ( -- ?)  THE R# ;
+
+: READ$   ( -- pad ) <MFILE 255 GW ;
+: WRITE$  ( $ -- )   >MFILE $. ;
+
+
+\ Hi-level words to use for sequential file access
+: OPEN_READ    ( $ -- )  FNAME! OPEN_R   ;
+: OPEN_WRITE   ( $ -- )  FNAME! OPEN_W   ;
+: OPEN_UPDATE  ( $ -- )  FNAME! OPEN_R/W ;
+: CREATE_FILE  ( $ -- )  FNAME! MAKE_FILE ;
+: OPEN_APPEND  ( $ -- )  OPEN_WRITE  0. MHANDLE@ LSEEK++ DROP ;
+
+
+
+
+
+EXIT
+
+

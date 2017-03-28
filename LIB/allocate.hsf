@@ -1,0 +1,176 @@
+\ =================================================================
+\ Minimal ALLOCATE FREE RESIZE                        BJF Aug 2016
+
+\ If you try to FREE a node that is not the last node it will blow
+\ away the ones below. Just like FORGET
+
+\ If you RESIZE an item that is not the last NODE you get an ERROR
+
+\ =================================================================
+\ *** SET MEMTOP FOR YOUR SYSTEM ***
+
+HEX  0FF00 constant memtop
+
+
+\ ERROR constants
+        69 constant allocate_err
+        79 constant heap_overflow
+        89 constant free_error
+        99 constant resize_error
+       200 constant hgap
+
+            2 cells constant hhead_size
+memtop hhead_size - constant rootnode
+
+VARIABLE AP
+VARIABLE LASTNODE
+
+: HEAP        ( -- addr ) ap @ ;
+: HALLOT      ( n -- )    negate ap +! ;
+: HEAP,       ( n -- )    heap ! cell hallot ;
+: HEND        ( -- n )    here hgap + ;
+: ?EOH        ( u -- ? )  hend  U<  ;
+: HLINK       ( addr --)  lastnode @ heap, hhead_size + lastnode ! ;
+: LASTNODE?   ( addr -- ?)  lastnode @ = ;
+: HEAP-SIZE   ( -- u )     heap hend  - ;
+: ALLOCATION  ( node -- addr)   cell - ;
+: ALLOCATED   ( node --  u )    allocation @ ;
+: >PREV       ( node -- addr')  [ 2 cells ] literal - ;
+
+: INIT-HEAP   ( --)
+               MEMTOP AP !
+               0 heap,                       \ root node size
+               0 heap,                       \ root node link
+               rootnode lastnode ! ;
+
+: ALLOCATE    ( u -- a-addr ior )
+              heap over -
+              ?eoh
+              if
+                  ALLOCATE_ERR
+              ELSE
+              ( u ) dup hallot HEAP,         \ allot & record size in the node
+                   HEAP hlink                \ link back to the old NODE
+                   LASTNODE @ 0              \ return the HEAP pointer and 0
+              THEN ;
+
+: RESIZE    ( addr u -- addr ior)
+            cell max
+            over lastnode?
+            if 2dup -  ?eoh
+               if  drop resize_error
+               else
+                  over allocated over - AP +!
+                  over allocation !
+                  false
+               then
+            else
+               drop resize_error
+            then ;
+
+init-heap
+
+TRUE [IF]
+\ this version of FREE has no error checking
+: FREE      ( addr -- ior)
+               >prev @
+               dup ap !  lastnode !
+               false  ;
+
+[ELSE]
+\ *SAFE* version of FREE checks if addr is a valid node
+: NODE?    ( node -- ? )
+              dup lastnode?
+              if drop true
+              else
+                 0 >r
+                 lastnode @
+                 begin >prev @ dup
+                 while 2dup = if  r> 1- >r  then
+                 repeat
+                 2drop
+                 r>
+              then ;
+              
+: ?NODE     ( addr -- addr)
+            dup NODE? 0=
+            if  cr ." Addr=" 5 u.r
+                true abort" Invalid HEAP node"
+            then ;
+
+
+: FREE      ( addr -- ior)  \ SAFE version
+            dup node?
+            if
+                >prev @
+                dup ap !
+                lastnode !
+                false
+            else
+                drop free_error
+            then ;
+
+[THEN]
+\ ==============================================================
+
+TRUE [if]
+\ ==============================================================
+\ test code
+
+
+
+: .Heap    ( -- ) cr ." Heap free= " HEAP-SIZE U. ;
+
+INIT-HEAP
+.Heap
+
+\ usage examples
+: malloc    ( bytes -- addr ) allocate  abort" Malloc failed" ;
+
+: calloc    ( #elements size -- addr )
+            * allocate abort" Calloc failed"
+            dup dup ALLOCATED erase ;
+
+
+2000 malloc value q
+2000 malloc value w
+ 300 malloc value t
+
+\ count nodes backwards
+:  #NODES  ( -- n)
+           0 >R
+           LASTNODE @
+           BEGIN
+              >PREV @ DUP
+           WHILE
+              R> 1+ >R
+           REPEAT
+           R> ;
+
+\ show the addresses and sizes
+: .node   ( node -- )  dup 6 u.r  TAB  dup ALLOCATED 5 .r  TAB  >prev @ 6 u.r ;
+
+: .nodes
+           cr ."  Node    Bytes   Link"
+           cr
+           lastnode @
+           begin
+               cr dup .node
+               >prev @
+           dup 0= until
+           2drop
+           CR ." Total nodes = " #nodes .
+           CR .Heap ;
+           
+: ALLOCATIONS  0 ?DO  100 malloc  loop ;
+
+: releases     0 ?do  FREE abort" FREE failed"  loop ;
+
+: TESTs        0 ?do  cr .heap  85 allocations  tab .heap  85 releases  loop ;
+
+
+[then]
+
+
+
+

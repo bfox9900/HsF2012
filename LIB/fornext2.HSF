@@ -1,0 +1,60 @@
+\ FOR NEXT  loops  ...................................................
+
+\ 40% faster than do..loop !!! compatible with eForth (?), but I never use it
+\ uses usigned int so it can count down from 65536 to 1
+
+0 [IF]
+
+CODE  <for>
+        bp inc.
+        bp inc.
+       [BP] BX mov.
+        BX pop.
+        next.
+end-code
+
+CODE  <next>
+        [bp] 1 iw sub.                 \ decr top of R-stack
+        jnz jmpb                       \ if not 0 jump back
+        bp 02 iw  sub.                 \ otherwuse do exit: pop the R-stack
+        si        inc.                 \ increment the Forth Instruction pointer by 2
+        si        inc.
+        next.
+
+@@ jmpb si [si]   add.                 \ INCR forth IP register
+        next.
+end-code
+
+
+[ELSE]
+
+\  HI level Forth equivalent
+: <for>  ( ncount -- R:nlimit R:ncount )  r> ;
+
+: <next>  ( #a_target R:n1 -- R:n2 )
+         r> 1- dup >r
+         IF
+             rdrop                    \ remove the counter
+             R> cell+ >r              \ else get the SI value from Rstack, inc by 2 and push back
+         THEN ;
+[THEN]
+
+
+
+: for       ( n -- ) ?comp  compile >R <mark 67 ;   immediate
+: next      ( -- )   67 ?pairs  compile <next> <resolve ; IMMEDIATE
+HEX
+: 64KTEST  TICK  FFFE FOR NEXT TOCK U. ;
+: 32KTEST  TICK  7FFF FOR NEXT TOCK U. ;
+: 32KDO    TICK  7FFE 0 DO LOOP TOCK U. ;
+
+
+exit
+
+code <for>  ( ncount -- R:nlimit R:ncount ) inline[ r> swap 0 >r >r >r ] next.  end-code
+code <<next>>  inline[ r> r> dup 1- >r ] next. end-code
+code @>R     inline[ @ >R ] next. end-code
+code cell+>R inline[ cell+ >r ] next. end-code
+
+
+

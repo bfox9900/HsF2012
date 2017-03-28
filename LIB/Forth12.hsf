@@ -1,0 +1,1225 @@
+\ HS/Forth Harness to move closer to ANS/ISO Forth
+
+
+\ ========================================================================
+\  This project was created by Brian Fox, Canada Apr 2008
+
+\         IN MEMORY OF JAMES T. CALLAHAN, SPRINGBORO OHIO
+\         TAKEN FROM US TOO SOON AT THE AGE OF 61
+\
+\  Rest in peace and thanks for all the code Jim
+\ ========================================================================
+
+\       An New Forth harness to bring old HSforth into the 21st Century per Forth 2012
+\       WARNING: this is not complete or 100% Forth2012 compatible.
+
+\       Introduction
+\       DOS requires a special Forth to deal with segment model so this Forth
+\       will still be unique.  I have simply tried to get rid of some of the
+\       very non-standard HSForth usages. The remarkable thing is that Jim Kalihan
+\       provided many tools that make it easy. Synonym and Behead' work wonders.
+
+\       Hs/Forth Hashed look-up is never used. It was great for my 8088 CPU but
+\       with todays machines compile time is less important than to have all the
+\       memory free in the Lists segment for bigger programs.
+
+\       We have also retired the optimizer. It was too much work to convert it.
+\       We have provided something almost as good in the INLINE[] . This takes
+\       much less space in the compiler and provide a 2X speed increase
+\       on sequences of Forth CODE words.  See: inline2.hsf
+
+\       In this build file the assembler is loaded and we assume the assembler
+\       is always present.  It is not shifted to unused memory.
+\       Do that if you prefer.
+\ ===========================================================================
+
+
+\ INSTRUCTIONS:
+\ ------------
+
+\ 1. In your HsForth root directory create a folder called LIB
+
+\  Assumed directory:
+\        ...\"anydir"\HSFORTH.EXE
+
+\        ...\"anydir"\LIB\...
+\                          ALL SOURCE FILES...
+
+
+\
+\ 2. Move all the hsf2000 files to the directory ..\LIB\
+
+\ 3. Start the HSFORTH kernel called HSFORTH.EXE from the directory that contains \LIB\
+
+\ 4. In the HSFORTH console type:  FLOAD FORTH12.HSF
+\    a) the HsFORTH Path will be set to \LIB by this file so everything will load correctly
+
+\ 5. Press enter key when prompted by the compiling process.
+
+\ 6. When the compile completes, start the program at the command line with:   HSF2012 <enter>
+
+
+\ HSF2012.EXE is NOT compatible with the HSForth Auto Optimizer NOR any other HsForth source files
+
+
+\ ===========================================================================
+\ history:
+\       Apr 2008 added code version of cells+
+\       Apr 2008 ON bug.  leaving adr on stack duh!
+\       Apr 28 2008 added ?DO.  Always wanted that :-)
+\       May 11 2008 used new inline: words to speed up some things
+\       Sep 12 2009 added code version of aligned
+\       Sept 28 2014: Moved hand coded primitives earlier in the file to be used by strings.hsf
+\       Oct 12 2014 : Fixed the age old problem I had with tick for AnsForth.  Finally grokked it. :-)
+\       Oct 26 2014 added /STRING  ACCEPT  CHARS  CHARS+
+\       Dec 2, 2014 added inline[  ]  multi-word optimizer
+\       Apr 2, 2015 corrected evaluate to be ANS compliant, added PARSE
+\       July 17 2015 correct ENVIRONMENT? Added internal system constants
+\       Aug 12 2015 created this file which will end ANSFORTH.hsf
+\                   Replaced WITHIN with a faster, smaller version from Win32For
+\                   Created new ver2012.hsf version control file for this build
+\                   (incremented build no. to 5)
+\       Nov 2  2015 included new ALLOCATE, FREE and RESIZE.  simple 8K heap in lists segment for compatibily
+\                    Fix um/mod after running core tests DUH!
+\                    added SM/REM and FM/MOD, stolen from Camel Forth
+\                    Finally made POSTPONE work correctly. Amazing what happens after you build a cross compiler.
+\       Nov 25 2015  Scratch what I said. Fixed Postpone.  Read the correct immediate bit. DUH!!
+\                    REPLACED all COMPILE AND [COMPILE] after Postpone is defined
+\       Nov 28 2015  Removed Allocate from the basic build to save space.
+\       Oct 18 2016  RENAMED vocab83 to vocabfox. Changed word VPOP to PREVIOUS
+
+\ ===========================================================================
+
+
+\ HSF2000 will UNDERSTAND lower case source code after this... YEAH!
+
+FLOAD CAPS.HSF
+
+CAPS                     \ enable case-insensitive function
+
+FLOAD catch.hsf          \ get this in early for later
+
+\ The words below are compliant in HsForth normally
+\ ANS FORTH WORD	ANS Reference HSF2000 Compliant
+\         !  	         6.1.0010  	1
+\         #  	         6.1.0030  	1
+\         (  	         6.1.0080  	1
+\         *  	         6.1.0090  	1
+\         +  	         6.1.0120  	1
+\         ,  	         6.1.0150  	1
+\         -  	         6.1.0160  	1
+\         .  	         6.1.0180  	1
+\         /  	         6.1.0230  	1
+\         :	         6.1.0450  	1
+\         ;  	         6.1.0460  	1
+\         <  	         6.1.0480  	1
+\         =  	         6.1.0530  	1
+\         >  	         6.1.0540  	1
+\         @  	         6.1.0650  	1
+\         I  	         6.1.1680  	1
+\         J  	         6.1.1730  	1
+\         [  	         6.1.2500  	1
+\         ]  	         6.1.2540  	1
+\         #>  	         6.1.0040  	1
+\         #S  	         6.1.0050  	1
+\         */  	         6.1.0100  	1
+\         +!  	         6.1.0130  	1
+\         .	         6.1.0190  	1
+\         0<  	         6.1.0250  	1
+\         0=  	         6.1.0270  	1
+\         1+  	         6.1.0290  	1
+\         1-  	         6.1.0300  	1
+\         2*  	         6.1.0320  	1
+\         2/             6.1.0330       1
+\         <#  	         6.1.0490  	1
+\         >R  	         6.1.0580  	1
+\         BL  	         6.1.0770  	1
+\         C!  	         6.1.0850  	1
+\         C,  	         6.1.0860  	1
+\         C@  	         6.1.0870  	1
+\         CR  	         6.1.0990  	1
+\         DO  	         6.1.1240  	1
+\         IF  	         6.1.1700  	1
+\         M*  	         6.1.1810  	1
+\         OR  	         6.1.1980  	1
+\         R>  	         6.1.2060  	1
+\         R@  	         6.1.2070  	1
+\         S"	         6.1.2165  	1
+\         U.  	         6.1.2320  	1
+\         U<  	         6.1.2340  	1
+\         >IN  	         6.1.0560  	1
+\         ABS  	         6.1.0690  	1
+\         AND  	         6.1.0720  	1
+\         DUP  	         6.1.1290  	1
+\         KEY  	         6.1.1750  	1
+\         MAX  	         6.1.1870  	1
+\         MIN  	         6.1.1880  	1
+\         MOD  	         6.1.1890  	1
+\         ROT  	         6.1.2160  	1
+\         UM*  	         6.1.2360  	1
+\         XOR  	         6.1.2490  	1
+\         /MOD           6.1.0240  	1
+\         ?DUP           6.1.0630  	1
+\         BASE           6.1.0750  	1
+\         CHAR           6.1.0895  	1
+\         DROP           6.1.1260  	1
+\         ELSE           6.1.1310  	1
+\         EMIT           6.1.1320  	1
+\         EXIT           6.1.1380  	1
+\         FILL           6.1.1540  	1
+\         HERE           6.1.1650  	1
+\         HOLD           6.1.1670  	1
+\         LOOP           6.1.1800  	0  HSF2012 uses Forth 79 loops
+\         MOVE           6.1.1900  	1
+\         OVER           6.1.1990  	1
+\         QUIT           6.1.2050  	1
+\         SIGN           6.1.2210  	1
+\         SWAP           6.1.2260  	1
+\         THEN           6.1.2270  	1
+\         TYPE           6.1.2310  	1
+\         WORD           6.1.2450  	1
+\         */MOD          6.1.0110  	1
+\         +LOOP          6.1.0140  	1
+\         >BODY          6.1.0550  	1
+\         ABORT          6.1.0670  	1
+\         ALLOT          6.1.0710  	1
+\         BEGIN          6.1.0760  	1
+\         COUNT          6.1.0980  	1
+\         DEPTH          6.1.1200  	1
+\         DOES>          6.1.1250  	1
+\         LEAVE          6.1.1760  	1
+\         SPACE          6.1.2220  	1
+\         STATE          6.1.2250  	1
+\         UNTIL          6.1.2390  	1
+\         WHILE          6.1.2430  	1
+\         ABORT	         6.1.0680  	1
+\         ACCEPT         6.1.0695  	1
+\         CREATE         6.1.1000  	1
+\         FM/MOD         6.1.1561  	1
+\         INVERT         6.1.1720  	1
+\         LSHIFT         6.1.1805  	1
+\         NEGATE         6.1.1910  	1
+\         REPEAT         6.1.2140  	1
+\         RSHIFT         6.1.2162  	1
+\         SM/REM         6.1.2214  	1
+\         SOURCE         6.1.2216  	0
+\         SPACES         6.1.2230  	1
+\         UM/MOD         6.1.2370  	1
+\         UNLOOP         6.1.2380  	0     not implemented
+\         [CHAR]         6.1.2520  	1
+\         >NUMBER        6.1.0570  	1
+\         ALIGNED        6.1.0706  	1
+\         DECIMAL        6.1.1170  	1
+\         EXECUTE        6.1.1370  	1
+\         LITERAL        6.1.1780  	1
+\         RECURSE        6.1.2120  	1
+\         CONSTANT       6.1.0950  	1
+\         EVALUATE       6.1.1360  	1
+\         POSTPONE       6.1.2033  	1
+\         VARIABLE       6.1.2410  	1
+\         IMMEDIATE      6.1.1710  	1
+\         ENVIRONMENT?   6.1.1345  	0     not implemented
+\
+
+\ ========================================================================
+\  set the path of the HSForth to \LIB
+
+$" LIB\" PATH0 $!
+\ text information to the person building
+
+\ ========================================================================
+\  this is just an INTERPRETED explanation file
+   FLOAD HSINFO.HSF
+
+\ define memory size in ISO terms  ..........................................
+
+synonym CELLS       2*                           \ 6.1.0890   Hsforth is a 16bit system therefore 2 bytes/cell
+
+1 cells CONSTANT CELL                            \ This is better than just defining CELL as '2'
+
+synonym CELL+       2+                           \ 6.1.0880  ( a-addr1 -- a-addr2 )
+synonym CELL-       2-                           \ Not in the standard but handy just the same
+
+
+\ 6.1.0898 CHARS chars CORE( n1 -- n2 )
+\ n2 is the size in address units of n1 characters.
+
+  : Chars ;                           \ syntacic sugar in a 16 bit DOS system
+
+
+\ 6.1.0897 CHAR+  char-plus CORE ( c-addr1 -- c-addr2 )
+\ Add the size in address units of a character to c-addr1, giving c-addr2.
+
+   synonym CHAR+ 1+     \ fastest code method
+
+
+\  ALSO, ONLY  etc      ......................................................
+
+ CR FLOAD VOCABFOX.HSF   \ was vocab83, changed VPOP to previous
+
+
+\ stretch out the HSForth Memory segments ....................................
+HEX
+ 0EFF new-stack                                  \ bigger stack space
+ 6FFF new-voc                                    \ bigger name space
+ FFFF new-list                                   \ 64K of THREADED code space( <50% full after all this stuff is loaded)
+                                                 \ this will create about 55K of space in the CODES segment with 6.5K used
+  CR
+  CR .( ** New Memory Map looks like this **)    \ show memory
+  CR .memory
+  CR
+  CR .( Press any key...)  key  DROP
+
+\ define some common constants used in modern forth systems ..................
+  0 constant false
+ -1 constant true
+
+
+cr  .( CORE word corrections  ....................................)
+
+synonym 2!          d!                           \ 6.1.0310
+synonym 2!l         d!l
+synonym 2@          d@                           \ 6.1.0350
+synonym 2drop       ddrop                        \ 6.1.0370
+synonym 2over       dover                        \ 6.1.0400
+synonym 2swap       dswap                        \ 6.1.0430
+synonym 2dup        ddup                         \ 6.1.0380
+
+synonym align       alignw                       \ 6.1.0705
+
+synonym s>d         s->d                         \ 6.1.2170
+
+synonym key?        kkey?
+synonym ekey>char   s->c
+
+synonym at-xy       wcursor!
+synonym getxy       wcursor@
+synonym source-id   source?                     \ NON-COMPLIANT, this is an hsf 'user-var'
+synonym pc@         p@
+synonym pc!         p!
+synonym ++@         step                        \ pre-increment fetch;  easier name (IMHO) ( cell+@ ?? is better name??)
+synonym ++c@        cstep                       \ pre-increment CHAR fetch; easier name (IMHO)  \ 1+c@
+synonym um/mod      u/mod
+
+\ ANS/ISO shifting instructions .................................................
+synonym rshift      SLR
+synonym lshift      SAL
+
+: FIND-V83            FIND  ;                     \ 6.1.1540
+
+synonym >number     number       ( $ -- )       \ non-standard: uses counted string as input argument
+synonym 2literal    dliteral
+
+: d>s         drop ;
+
+\ CORE-EXT words corrections .............................................
+\         \\               6.2.2535
+\         .(               6.2.0200              \ not implemented
+\         .R               6.2.0210
+\         0>               6.2.0280
+\         <>               6.2.0500
+\        'C '              6.2.0855
+\         OF               6.2.1950
+\         U>               6.2.2350
+\         0<>              6.2.0260
+\         2R@              6.2.0415
+\         ?DO              6.2.0620
+\         HEX              6.2.1660
+\         NIP              6.2.1930
+\         PAD              6.2.2000
+\         TIB              6.2.2290
+\         U.R              6.2.2330
+\         #TIB             6.2.0060
+\         CASE             6.2.0873
+\         PICK             6.2.2030
+\         ROLL             6.2.2150
+\         SPAN             6.2.2240
+\         TRUE             6.2.2298
+\         TUCK             6.2.2300
+\         AGAIN            6.2.0700
+\         ENDOF            6.2.1343
+\         ERASE            6.2.1350
+\         FALSE            6.2.1485
+\         PARSE            6.2.2008
+\         QUERY            6.2.2040
+\         VALUE            6.2.2405
+\         EXPECT           6.2.1390
+\         MARKER           6.2.1850
+\         REFILL           6.2.2125       \ not implemented
+\         UNUSED           6.2.2395       \ not implemented
+\         WITHIN           6.2.2440
+\          NONAME          6.2.0455       \ not implemented
+\         CONVERT          6.2.0970
+\         ENDCASE          6.2.1342
+\         COMPILE          6.2.0945
+\         SOURCE-ID        6.2.2218       \ not implemented
+\         [COMPILE]        6.2.2530
+\         SAVE-INPUT       6.2.2182       \ not implemented
+\         RESTORE-INPUT    6.2.2148       \ not implemented
+
+synonym 2rot        drot
+synonym 2>r         d>r                   \  6.2.0340
+synonym 2r>         dr>                   \  6.2.0410
+synonym 2r@         dr@
+synonym 2constant   dconstant
+synonym 2variable   dvariable
+synonym nip         pluck
+synonym tuck        under
+synonym off         0!
+synonym 2rdrop      drdrop                \ HsForth word, changed name to be consistent
+: user              user-var ;
+
+synonym value       var
+synonym 2value      dvar
+
+
+cr .( removing old names to prevent compilation of old HsForth code ...)
+
+\ behead' find
+behead' d!                   behead' d!l
+behead' d@                   behead' dconstant
+behead' dvariable            behead' ddrop
+behead' ddup                 behead' dover
+behead' dswap                behead' drot
+behead' D>R                  behead' DR>
+behead' s->d                 behead' pluck
+behead' under                behead' ascii
+behead' alignw               behead' var
+behead' dvar                 \ behead' number
+behead' wcursor!             behead' dliteral
+( behead' shell )               behead' source?
+behead' p!                   behead' p@
+behead' step                 behead' cstep
+behead' cfa'                 behead' mu/mod
+behead' SLR                  behead' SAL
+behead' dr@
+behead' drdrop
+
+\ behead' user-var
+\ behead' is
+
+\ *****************************************************************************
+\ ****     Beyond this point you can't load old HSForth Library code       ****
+\ *****************************************************************************
+
+
+\ HSF2000 environment constants
+DECIMAL
+      255 constant /COUNTED-STRING
+       80 constant /HOLD
+       80 constant /PAD
+       16 constant ADDRESS-UNIT-BITS
+     true value    CORE
+    false value    CORE-EXT
+    false constant FLOORED
+      255 constant MAX-CHAR
+
+HEX
+    7FFF  constant MAX-N
+    FFFF  constant MAX-U
+07FFFFFF. 2constant MAX-D
+FFFFFFFF. 2constant MAX-UD
+
+
+\
+\ ANS style "tick" returns the CFA or the "execution token" as they say now   (HSFORTH returned the Parameter field address)
+\
+\ 6.1.0070
+
+BEHEAD' '
+
+: '             ( -- <name>  xt)  PFA-OF CFA  ;
+
+\ 6.1.2510
+: [']           ( -- <name>  )    ?comp [compile] ' [COMPILE] LITERAL ; immediate
+
+
+\ **** Windows assistance *****      Mar 6 2006 B Fox
+\ The idle function below allows HSF2000 to behave well in windows
+\ Working much like YIELD in the HSF multi-tasker, IDLE returns control to the
+\ operating system.  This allows HSF2000 to not hog all the CPU time and
+\ work better with other windows programs.
+
+HEX
+: IDLE          ( -- )           1680 0 0 0 02F INTCALL DROP ;
+
+
+\ 6.2.1850 MARKER ....... NON-STANDARD IMPLEMENTATION ......................
+\ CORE EXT
+\
+\	( "<spaces>name" -- )
+\
+\ Skip leading space delimiters. Parse name delimited by a space. Create a
+\ definition for name with the execution semantics defined below.
+
+\	name Execution: ( -- )
+\
+\ Restore all dictionary allocation and search order pointers to the state
+\ they had just prior to the definition of name. Remove the definition of
+\ name and all subsequent definitions. Restoration of any structures still
+\ existing that could refer to deleted definitions or deallocated data space
+\ is not necessarily provided. No other contextual information such as
+\ numeric base is affected.
+
+SYNONYM MARKER      TASK          \ HSFORTH equivalent creates the marker, but execution returns an address
+
+SYNONYM DISCARD     FORGET-TASK   \ non standard. discard removes everything from the 'MARKER' NAME and forward
+
+behead' TASK
+behead' FORGET-TASK
+
+\ ANEW ....................................................................
+
+: ANEW        MARKER  ;                                    \ NON standard. Creates a Marker label that can be "DISCARDed"
+
+: buffer: ( n <name> -- addr)  create  allot ;            \ Forth 2012 word
+
+: compile,      ( n -- )  ,   ;                           \ with ITC Forth these are the same
+
+
+\ 6.1.2033 POSTPONE
+\  Typical use:
+\
+\    : ENDIF  POSTPONE THEN ;  IMMEDIATE
+\
+\   : X  ... IF ... ENDIF ... ;
+
+HEX
+: POSTPONE      ( <name> -- )                             \ finally got around to GROKing Postpone for HSForth on Nov 25 2015 !!!!! duh :-)
+                ?COMP
+                -FIND  ( pfa imm ?)                       \ HsForth -Find returns PFA. Old school style
+                0= ABORT" POSTPONE can't find"
+                40 AND 0=                                 \ test immediate bit
+                if   compile compile                      \ non-immediate word need COMPILE
+                then cfa compile, ; immediate             \ compile the CFA into the definition
+DECIMAL
+
+: C"            ( -- addr len)  postpone $" ;  IMMEDIATE  \ non-standard. This one is STATE smart and can be used interactively
+
+behead' $"                                                \ we won't use this HsForth word anymore :-(
+
+: ?stk          ( -- )   \ Added this because this build was leaving things on the stack orginally
+                warning @
+                if
+                    DEPTH 0<
+                    IF ." *Warning* Stack depth = " depth .
+                    THEN
+                then ;
+
+\ 6.1.0895 CHAR  char CORE ( "<spaces>name" -- char )
+\ Skip leading space delimiters. Parse name delimited by a space. Put the value of its first character onto the stack.
+
+: CHAR          ( -- <c>)  BL WORD char+ C@ ;
+
+\ 6.1.2520 [CHAR]   bracket-char CORE
+\	Interpretation: Interpretation semantics for this word are undefined.
+\
+\ 	Compilation: ( "<spaces>name" -- )
+\       Skip leading space delimiters. Parse name delimited by a space. Append the run-time semantics given below to the current definition.
+\
+\ 	Run-time: ( -- char )
+\        Place char, the value of the first character of name, on the stack.
+
+: [CHAR]        ( -- <c>)  ?COMP CHAR  POSTPONE LITERAL ;  IMMEDIATE
+
+
+: TO   PFA-OF  4- ,EXE ;  IMMEDIATE     \ 6.2.2295 HSForth used 'IS' for VALUEs so we change it here
+
+BEHEAD' IS                              \ we remove this old version and redefine it later for DEFER et al...
+
+
+\ 6.1.0695 ACCEPT CORE  ( c-addr +n1 -- +n2 )
+\         Receive a string of at most +n1 characters. An ambiguous condition
+\         exists if +n1 is zero or greater than 32,767. Display graphic
+\         characters as they are received. A program that depends on the
+\         presence or absence of non-graphic characters in the string has an
+\         environmental dependency. The editing functions, if any, that
+\         the system performs in order to construct the string are implementation-defined.
+\
+\         Input terminates when an implementation-defined line terminator is
+\         received. When input terminates, nothing is appended to the string,
+\         and the display is maintained in an implementation-defined way.
+\
+\         +n2 is the length of the string stored at c-addr.
+
+: ACCEPT        ( c-addr +n1 -- +n2 )   Expect SPAN @  ;   \ simplest way to do it.
+
+
+cr .( load the assembler .............................)
+
+ CR FLOAD 8088asm.hsf                                  \ we have memory. always keep the assembler
+
+?STK
+
+\ 6.1.0706 ALIGNED
+\ CORE  a-addr is the first aligned address greater than or equal to addr.
+
+CODE ALIGNED    ( addr -- a-addr )
+                bx inc.
+                bx -2 iw and.
+                next.
+END-CODE
+
+
+
+\ ANS specifies it different than HsForth
+\ A.6.2.2030 PICK
+\   0 PICK is equivalent to DUP and 1 PICK is equivalent to OVER.
+
+behead' pick
+\  : pick          1+ pick ;            \ retired this one
+
+code PICK       ( n -- n')
+                BX BX ADD.              \ multiply BX by 2
+                BX SP ADD.              \ add the stack pointer offset
+            SS: BX [BX] MOV.            \ fetch the value at the address in SS:BX and return to BX
+                NEXT.
+end-code
+
+: roll          1+ roll ;               \ I never use this
+
+\ 6.1.1720 INVERT CORE ( x1 -- x2 )
+\
+\         Invert all bits of x1, giving its logical inverse x2.
+code invert     ( x1 -- x2)
+                BX NOT.
+                NEXT.
+end-code
+
+\
+\ 6.1.2360   UM*  CORE ( u1 u2 -- ud1 )
+\
+CODE UM*       ( u1 u2 -- ud1 )                 \ multiply unsigned u1 by unsigned u2
+                AX  POP.
+                BX  MUL.
+                AX  PUSH.
+                BX  DX  MOV.
+                NEXT.
+end-code
+
+
+\ Non-ISO words but handy and common in other Forths
+\ : bounds   over + swap ;
+
+code bounds     ( adr n -- adr2 adr1)
+                AX POP.                          \ POP the limit
+                BX AX ADD.                       \ add to the index
+                BX PUSH.                         \ push the limit
+                BX AX MOV.                       \ put new index in BX
+                NEXT.
+end-code
+
+
+code on         ( adr -- )
+                [bx] true iw mov.
+                bx pop.
+                next.
+end-code
+
+
+\ Thanks to Brad Rodriguez, Camel Forth
+: ?NEGATE       ( n1 n2 -- n3)                    \  negate n1 if n2 negative
+                0< IF NEGATE THEN ;               \ ...a common factor
+
+
+: SM/REM       ( d1 n1 -- n2 n3 )                 \ symmetric signed div.   Courtesy Camel Forth
+               2dup xor >r                        \ sign of quotient
+               over >r                            \ sign of remainder
+               abs >r dabs r> um/mod
+               swap r> ?negate
+               swap r> ?negate ;
+
+: FM/MOD      ( d1 n1 -- n2 n3)                   \ floored signed div'n
+               dup>r                              \ divisor
+               2dup xor >r                        \ sign of quotient
+               >r                                 \ divisor
+               dabs r@ abs um/mod
+               swap r> ?negate swap               \ apply sign to remainder
+               r> 0<
+               if                                 \ if quotient negative,
+                 negate over
+                 if                               \ if remainder nonzero,
+                    r@ rot -  swap 1-             \ adjust rem,quot
+                 then
+               then
+               rdrop ;
+
+
+\ 3.3.3 Data space, A.6.1.0550 >BODY.
+\ a-addr is the data-field address corresponding to xt. An ambiguous condition exists if xt is not for a word defined via CREATE.
+: >body    ( xt -- a-addr ) cell+ ;
+
+\ these were part of Forth 83 and are still helpful for building compiling words
+: body>    ( n -- n')  cell- ;
+: cmove>   ( addr addr2 n -- )  2>R  lists @ tuck 2R>  <cmovel  ;
+: <mark    ( -- addr)  here-l ;
+: <resolve ( addr --)  here-l - , ;
+: >mark    ( -- addr)  here-l 0 , ;
+: >resolve ( addr -- ) here-l over-  the listseg @ rot !l ;
+
+
+\ A.6.2.0620 ?DO       CORE EXT
+\
+\ Typical use: : FACTORIAL ( +n1 -- +n2 ) 1 SWAP 1+ ?DO I * LOOP ;
+\ This word was added in response to many requests for a resolution of the
+\ difficulty introduced by Forth-83's DO, which on a 16-bit system will loop
+\ 65,535 times if given equal arguments. As this Standard also encourages 32-bit
+\ systems, this behavior can be intolerable. The Technical Committee considered
+\ applying these semantics to DO, but declined on the grounds that it might
+\ break existing code.
+
+cr ."  adding ?do for your loops  ............................................"
+
+ code <?do>
+                ax      pop.
+                bx ax   cmp.                     \ compare 2 #s on the stack
+                jnz 001                          \ if they are not the same jump to 001
+
+                                                 \ otherwise do a Forth 'EXIT'
+                si [bp] mov.                     \ pop rStack into SI
+                bp dec. bp dec.                  \ move the rstack pointer down 2 bytes
+                bx pop.                          \ clean the parameter stack
+                next.                            \ run NExt
+
+ @@ 001         bp inc.                          \ regular Forth <DO> begins here
+                bp inc.                          \ could be replaced with inline: <DO>  :-)
+               [bp] ax mov.
+                bp inc.
+                bp inc.
+               [bp] bx mov.
+                bx pop.
+                next.
+ end-code
+
+ : ?do          ( n1 n2 -- ) POSTPONE <?do> <mark 3  ; immediate
+
+
+\ 6.2.2440 WITHIN CORE EXT
+\
+\	( n1|u1 n2|u2 n3|u3 -- flag )
+
+\ Perform a comparison of a test value n1|u1 with a lower limit n2|u2 and an
+\ upper limit n3|u3, returning true if either (n2|u2 < n3|u3 and (n2|u2 <= n1|u1
+\ and n1|u1 < n3|u3)) or (n2|u2 > n3|u3 and (n2|u2 <= n1|u1 or n1|u1 < n3|u3))
+\ is true, returning false otherwise. An ambiguous condition exists if n1|u1,
+\ n2|u2, and n3|u3 are not all the same type.
+
+CODE within    ( n lo hi -- flag )  \ clever version is taken from Win32For. No JUMPS!
+                ax pop.
+                cx pop.
+                bx ax sub.
+                cx ax sub.
+                cx bx sub.
+                bx bx sbb.
+                next.
+end-code
+
+\ WITHIN? is not a standard word.  This is sometimes called BETWEEN (MPE Forth)
+\ Returns TRUE if  lo <= n <= hi . Signed comparison
+\ I find this easier to use without error BF
+
+: within?    ( n lo hi -- flag )    1+ within ;
+
+
+\
+\ removed May 2008.  Not used
+\ : tolower ( c -- c )
+\          DUP UPPER? IF  20 OR THEN ;
+\
+\ : toupper ( c -- c)
+\         DUP LOWER? IF 05f AND THEN ;
+
+
+\
+\ magic machine code transcribed from original HsForth
+\
+code [i]lwr     ( -- )            ( 17 bytes )        \ EQUIV:  I c@ tolower I c!
+                DI [BP] MOV.
+                AL [DI]  MOV.
+                AL 41 IB CMP.
+                JL END:
+                AL 5A IB CMP.
+                JG END:
+                AL 20 IB OR.
+               [DI] AL MOV.
+@@ END:         next.
+end-code
+
+
+\ we re-instated this word to handle ISO strings that use addr & cnt on the stack
+: tolower       ( addr cnt -- )                       \ converts ISO string in place
+                bounds  do   [i]lwr   loop ;
+
+: lower         ( $ -- )  count tolower ;             \ used in OLD code so we need to keep it
+
+
+\ UPPER fast version from CAPS.HSF with Jim Kalihan black magic code converted to assembler
+code [i]upr
+                DI [BP] MOV.
+                AL [DI]  MOV.
+                AL 61 IB CMP.
+                JL END:
+                AL 7A IB CMP.
+                JG END:
+                AL 20 IB SUB.
+               [DI] AL MOV.
+@@ END:        next.
+end-code
+
+
+\ we re-instated this word to handle ISO strings that use addr & cnt on the stack
+: toupper       ( addr cnt -- )  \ converts ANS string in place
+                bounds do   [I]upr   loop ;
+
+: upper         ( $ -- )  count toupper ;             \ legacy word in Fox code
+
+\ save what we have created as a kernel
+cr ." Saving CORE2016.exe..."
+cr
+
+save-exe core2012.exe ." HSF2012 CORE Oct 2016"
+
+
+cr ." scan defer inline[] ..."
+ CR FLOAD scan.hsf           \ memory scanning words in assembler, corrected Nov 2015 after 20 yrs!
+ CR FLOAD defer.hsf          \ deferred words updated from original HS/Forth
+ CR FLOAD inline2.hsf        \ creates inline machine code from hi-level Forth words (2X speed-up typical)
+
+
+\ Multi-tasker stub
+CODE YIELD  NEXT. END-CODE                   \ this is for multi-tasker support with I/O words
+
+
+: ekey?         ( -- n )
+\ Windows friendly version uses 'idle'
+                ?terminal idle ;
+
+: ekey          ( -- n )
+\ returns ibm pc key code
+                begin
+                     yield                  \ makes it multi-tasking compatibile (see: MTASK.HSF)
+                     ekey?
+                     ?dup
+                until ;
+
+
+
+\ COMPARE  Forth 2012 Optional string word set (17 in total)
+\ I measured this as being 20% faster than the Assembler
+\ version I wrote when it uses the inlined code words! Whoa!
+\ The wild thing is that this COMPARE in hi-level Forth
+\ is the same speed as the assembler version without INLINE[]
+
+
+\ inlined code words to speed up the inner workings of the Forth COMPARE
+code lens?      ( addr addr' -- n)  inline[ over c@ over c@ - ] next. end-code
+code nextchar=   inline[ 1+ swap 1+ swap  r> 1- dup >r 0= ] next. end-code
+code cleanup     inline[ swap c@ swap c@ - 2rdrop  exit ]   next. end-code   \ Rdrop equiv. is r> drop
+
+: compare       ( addr1 u1 addr2 u2 --- diff )               \ Compare two strings. diff is negative if addr1 u1 is smaller, 0 if it
+                rot 2dup - >r                                \ is equal and positive if it is greater than addr2 u2.
+                min dup
+                if  >r
+                    begin
+                       lens?                                 \ are string lengths the same?
+                       if   cleanup                          
+                       then nextchar=
+                    until
+                    r>
+                then 2drop drop r> negate ;
+
+behead' lens?
+behead' nextchar=
+behead' cleanup
+
+CR FLOAD strings5.hsf                                      \ smaller string lib with support for ISO stack strings
+
+\ ========================================================================
+cr ." Conditional compilation [IF] [ELSE] [THEN]"
+
+ cr FLOAD condcomp.hsf
+ cr
+
+ ?stk
+
+behead' ?(((                                                \ NOW we can get rid of these ugly things
+behead' )))
+
+
+\ words to insert control characters. Used like CHAR and [CHAR] .......
+HEX
+: CTRL      ( <TEXT> --  n ) bl word   1+ c@  01F and ;        \ usage:  CTRL J CONSTANT ^J   CTRL M CONSTANT ^M
+
+: [CTRL]    ( <TEXT> -- )   ?COMP CTRL POSTPONE literal ; immediate
+
+
+\ 6.2.2008 PARSE  CORE EXT ( char "ccc<char>" -- c-addr u )
+\
+\ Parse ccc delimited by the delimiter char.
+\ c-addr is the address (within the input buffer) and u is the length of the
+\ parsed string. If the parse area was empty, the resulting string has a zero length
+
+CREATE PARSEBUF 100 CHARS ALLOT   \ this is a kludge
+
+: PARSE ( char "ccc<char>" -- c-addr u )  WORD PARSEBUF $! PARSEBUF COUNT ;
+
+\ Not in Forth 94 but commonly used by Neil Baud library code
+\ Changed to Parse-name Forth 2012
+: PARSE-NAME  ( char "ccc<char>" -- c-addr u )  "WORD PARSEBUF $! PARSEBUF COUNT ;
+
+
+\ 6.1.1360 EVALUATE CORE ( i*x c-addr u -- j*x )
+\
+\ Save the current input source specification. Store minus-one (-1) in SOURCE-ID
+\ if it is present. Make the string described by c-addr and u both the input
+\ source and input buffer, set >IN to zero, and interpret. When the parse area is
+\ empty, restore the prior input source specification. Other stack effects are due
+\ to the words EVALUATEd.
+
+hex
+: <EVAL$>       ( $ -- )
+                [CTRL] Z +char                   \ put ^Z on end of string
+                lists @ swap 1+ mload ;          \ interpret the string
+
+: evaluate      ( c-adr u -- )
+                >new:top$                        \ convert ANS string to counted string
+                                                 \ Using the string stack means we should be able to evaluate while evaluating...
+                <EVAL$>  ;
+
+\ ***NON-Compliant***
+\ HS/Forth uses counted strings so the stack diagram is simpler and HS/Forth
+\ set's it's own values for source-id
+hex
+: $evaluate      ( adr$ -- )                     \ VERY HSF specific.  String is in lists segment
+                <EVAL$> ;
+
+
+: adr-tib       tib ;
+
+warning off
+
+: tib           ( -- adr)      the tib ;
+
+
+
+\
+\ now we can make new CODE primitives with 'inline:' and 'inline['
+\
+[undefined] inline[  [if]
+\ Forth definition
+
+ CELLS+ ( adr n -- adr) cells + ;
+
+[else]
+
+code CELLS+     ( adr n -- adr)
+                inline[ cells  + ]
+                next.
+end-code
+
+[then]
+
+
+
+MARKER KERN2012
+
+SAVE-EXE kern2012.EXE  cr ." Forth 2012 Kernel"
+
+
+\ upper/lower case control words
+HEX
+: lower?        ( c -- ?)  [char] a [char] z within? ;
+: upper?        ( c -- ?)  [char] A [char] Z within? ;
+
+
+\ 6.1.2216 SOURCE ( -- c-addr u)
+\ c-addr is the address of the input buffer and u is the number of characters in, the input buffer.
+\ You have to re-write the interpreter loop to make this work... some day.
+
+2VARIABLE 'SOURCE
+
+: source!  ( adr len -- )  'source 2! ;
+
+    TIB  #TIB SOURCE!                                 \ init the source
+
+: source   ( -- c-addr u )   'SOURCE 2@  @ ;
+
+
+: time&date     ( -- sec min hr day month year)       \ this ANS/ISO word always bugs me!
+                time@ 3 roll drop date@ ;
+ ?stk
+
+
+
+\ CR ." STACK=" DEPTH .
+
+warning on
+
+ ?stk  \ CR ." STACK=" DEPTH .
+
+
+
+?STK
+
+
+SAVE-EXE kern3.EXE
+cr ." ANS Kernel 3 saved"
+
+
+\ ========================================================================
+\ Create word set flags for ANS for this Forth version
+
+  false value floating     ( -- flag)            \  floating-point word set present
+  false value floating-ext ( -- flag)            \  floating-point extensions word set present
+  true  value floating-stack                  \ floating point #s kept on separate stack (487 stack)
+
+  false value tools                              \ we'll set this when we load tools.hsf
+  false value tools-ext
+
+
+\ These words use the HSF2000 STACKS word which is data structure
+\ that holds the details of the STACK segment as it is configured for the current task
+\ This means these words will return the correct value even in a multi-tasking
+\ environment.
+
+\ HSF2000 divides the stack segment into 2 parts. Stack grows downward. Rstack grows upward
+\ So we just take the size of the segment and divide by 2 and subtract 1 cell to be safe.
+
+: STACK-CELLS        ( -- n )  STACKS 2I@ 2/ CELL- ;
+
+: RETURN-STACK-CELLS ( -- n )  STACK-CELLS ;        \ same size for both. No need to re-code
+
+
+0 [IF]
+\ ========================================================================
+\ we will record each file name in a separate vocabulary 
+
+\ ** I retired this feature because I never used it **
+
+hex 400 TO seg-size
+
+\ create a vocabulary to contain the names of the files included in the system
+vocabulary files
+
+forth definitions
+
+decimal
+: $create       ( string$ -- ) upper$ $label DROP$  oklw   ;   \ make string$ a Forth word in the dictionary
+
+: $filename!    ( $ -- )
+                current @ >r
+                context @ >r
+                files definitions $create           \ create the name in 'files'
+                r> context !
+                r> current ! ;
+
+\ manually record the names of the previously floaded files in the HSF2000 system
+ c" 8088asm.hsf" $filename!
+ c" strings.hsf" $filename!
+ c" scan.hsf"    $filename!      \ memory scanning words in assembler
+ c" defer.hsf"   $filename!      \ deferred words updated from original HS/Forth
+ c" inline2.hsf" $filename!      \ creates inline machine code from hi-level Forth CODE words (2X speed-up)
+
+ [THEN]
+
+
+\ 11.6.1.1718 INCLUDED  FILE  ( i*x c-addr u -- j*x )
+
+\ Remove c-addr u from the stack. Save the current input source specification,
+\ including the current value of SOURCE-ID. Open the file specified by c-addr u,
+\ store the resulting fileid in SOURCE-ID, and make it the input source.
+\ Store zero in BLK. Other stack effects are due to the words included.
+\ Repeat until end of file: read a line from the file, fill the input buffer
+\ from the contents of that line, set >IN to zero, and interpret.
+\ Text interpretation begins at the file position where the next file read would occur.
+
+\ When the end of the file is reached, close the file and restore the input
+\ source specification to its saved value.
+
+\ An ambiguous condition exists if the named file can not be opened, if an
+\ I/O exception occurs reading the file, or if an I/O exception occurs while
+\ closing the file. When an ambiguous condition exists, the status (open or closed)
+\ of any files that were being interpreted is implementation-defined.
+
+: included      ( c-addr u -- )                  \ uses ISO stack string for input
+                >new:top$
+                cr ." compiling " ( top$) count type
+                top$  ( dup $filename!) <mfload>    \ record the file & load
+                collapse ;                       \ clear the string stack
+
+ ?stk
+
+: include       ( -- <text-file-name> )          \ USAGE:  include test.hsf    Apparently this not standard!! Who knew?
+                bl parse included ;
+
+
+\ CR ." STACK=" DEPTH .
+
+\ now we can load stuff like ANS Forth
+    include datestr.hsf
+    include elapse.hsf
+    include case.hsf
+    include hstimer.hsf
+    include color.hsf
+    include tools.hsf
+    include words2.hsf                            \ coloured words like FPC :-)
+    include cmndline.hsf                         \ READ the command line string
+\   include allocate.hsf                          \ simplest version I can think of, limited memory
+\ BUGS!!   include need.hsf                       \ simple conditional compiling for 1 liners.
+
+
+cr ." Saving Kern4.EXE "
+SAVE-EXE Kern4.EXE cr ." ANS Kernel 3"
+CR
+
+\ ***************************************************************************
+\ Keep track of the versions with a little version file
+
+variable version
+variable build
+11 $variable built$
+
+cr fload ver2012.hsf ( -- build# ver#)           \ read the file & return 2 numbers on the stack
+
+        build !  version !                       \ store the #s in the variables
+
+\ get todays date and store it
+  date@  m,d,y$ built$ $!
+
+\ a word to print the version of hsf2000 as a coloured banner
+:  .ver
+                green bg  white fg
+                ." HsForth 2012, 16 bit, Segmented Model,  by Brian Fox     V" version @ 2 .r  [char] . emit build @ U.  2 spaces built$ $.
+                black bg  ltgray fg ;
+
+cr
+cr .ver        \ now show the version during compiling
+cr
+
+
+0 [if]
+\ ========================================================================
+\ Modelled after Win32Forth, this word displays the files that have been compiled
+\ into the system this word uses a separate vocabulary (files) to keep the
+\ strings in. Forth already has this functionality so let's use it.
+
+: .LOADED
+                cr ." loaded forth files"
+                cr ." -------------------"
+                context @ >r
+
+                files words
+
+                r> context ! ;
+
+[then]
+
+
+\ ========================================================================
+\ system &  //
+: SYSTEM        ( addr len -- )                  \ enhancing HSForth SHELL, Modeled on F-PC. Thanks Tom Zimmer
+                >new:top$                        \ dos commands from the input stream pushed onto string stack
+                len 0=                           \ is there a command string?
+                if                               \ No? then jump to cmd.exe like FPC (Tom Zimmer PC Forth)
+                     main -watr wipe
+                     blue bg ." Type EXIT to return to HSF2000" cr
+                     -watr TOP$ SHELL
+
+                else                             \ yes we have DOS commands
+                     TOP$ SHELL                  \ shell out to dos and run the text commands
+                     cursor@ at-xy               \ put the cursor back when we return
+                then
+                drop$                            \ clean the string stack
+                main ;                           \ go back to the main (default) video page
+
+BEHEAD' SHELL                                    \ we no longer need this HsForth word
+
+\ this is a command I use to get to OS command line fast
+\ Usage:  // CD mydir
+: //     ( <text> -- )   1 word count system ;
+
+
+\ pre-define some disk drives.  Add to this as needed
+: a:            c" a:" system ;
+: b:            c" b:" system ;
+: c:            c" c:" system ;
+: d:            c" d:" system ;
+: e:            c" e:" system ;
+: f:            c" f:" system ;
+: g:            c" g:" system ;
+
+\ ========================================================================
+CR
+CR  ." ANS Forth compatabilty harness loaded"  CR
+
+\
+\ define the start up word for the new HSF2000 ******************************
+\
+: HELLO
+                decimal
+                only forth ALSO assembler ALSO FORTH definitions
+
+                HSTIMER                          \ Set the timer to Mode 2 for Hi-speed timer
+                timercal                         \ calibrate the timer for accurate MS timing
+                COLLAPSE                         \ RESET string stack pointer
+                page  .ver cr                    \ a little splash screen
+                TIB  #TIB SOURCE!
+                args[] $evaluate                 \ HSF2000 EVALUATEs the DOS command line before it does anything else
+                0 arg$L !l                       \ zero the count on the command line string so it can't run again
+;
+
+\ get out of HSF2000 and put things back the way we found them
+: BYE
+                DOSTIMER                         \ return the timer to normal DOS mode 3
+                bye ;
+
+       DEPTH 0=                                                   \ CHECK stack for surprises left behind
+       [IF]   CR ." *** Build ended successfully ***"
+
+       [ELSE] CR ." ***BUILD ABORTED*** "
+              CR ." Unknown Stack contents = " .S
+              ABORT
+       [THEN]
+
+\                            End of Build
+\ =============================================================================
+
+
+\ Version Control ............................................................
+\ Now we can use HSForth as a script language to update the version build file
+
+       CR ." Updating build File: 'version.hsf' ..."
+       CR
+
+DECIMAL
+       c" ver2012.hsf" make-output                     \ create and open the file
+
+       >file ." ( version control file )" cr
+       >file ." ( this file is computer generated. do not modify!! )"  cr
+
+      \ 5 version !                                    \ **UPDATE VERSION NUMBER HERE**
+        build 1+!                                      \ incr. build# variable
+
+       >file ." decimal " version ?  space build ?  cr \ write them as text to the file
+       >file cr                                        \ add another line
+       close-output                                    \ close the file
+       console                                         \ switch back to console
+
+       decimal
+
+       CR
+       CR ." PRESS ANY KEY TO SAVE PROGRAM" key DROP
+
+       cr  ." copying old program..."
+ \     // MKDIR OLD
+       // copy HSF2012.EXE  OLD\HSF2012.EXE
+
+       cr  ." Saving system as... HSF2012.EXE"
+       cr
+       save-exe HSF2012.EXE  hello
+       cr
+       cr ."  Start the program at the command line with:   HSF2012 <enter>"
+       BYE
+
+\                             END OF VERSION CONTROL
+\ ===========================================================================

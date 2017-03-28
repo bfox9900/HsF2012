@@ -1,0 +1,231 @@
+\ DOS2EXT.hsf     COPYRIGHT 1985 HARVARD SOFTWORKS, ALL RIGHTS RESERVED
+\ reformatted for legibility  Nov 21 2006 B.Fox
+HEX
+
+CODE T-SPLIT ( time - sec min hr )
+         <% 89D8 251F00 D1E0 50 89D8 25E007 B105 D3E8 50 B10B D3EB %>
+     next.
+END-CODE
+
+
+
+CODE D-SPLIT ( date - day month year )
+      <% 89D8 251F00 50 89D8 25E001 B105 D3E8 50 B109 D3EB 81C3BC07 %>
+      next.
+END-CODE
+
+CODE D-PACK  ( day month year - date )
+             <% 81EBBC07 B109 D3E3 58 B105 D3E0 09C3 58 09C3 %>
+    next.
+END-CODE
+
+CODE T-PACK  ( sec min hr - time )
+             <% B10B D3E3 58 B105 D3E0 09C3 58 D1E8 09C3 %>
+              next.
+end-code
+
+CODE DATE!   ( day month year - 0=valid/-1=invalid )
+             <% B8002B 59 5A 88CE 89D9 5655CD215D5E 30E4 98 93 %>
+             next.
+end-code
+
+CODE TIME!   ( c s m h -  0=valid/-1=invalid )
+             <% B8002D 59 88DD 5B 5A 88DE 5655CD215D5E 30E4 98 93 %>
+             next.
+             end-code
+
+CODE FAT  ( drv#  -  sectors/cluster bytes/sector  #clusters FATseg FAToffset )
+          <% B8001C 89DA 1E 5655CD215D5E 5F 30E4 50 51 52 1E 8EDF %>
+          next.
+          end-code
+
+: VERIFY=ON     0 2E01 SYSF DROP ;
+
+: VERIFY=OFF  0 2E00 SYSF DROP ;
+
+
+CODE DTA-BUF    ( -- seg offset )
+        <% 53 B8002F 5655CD215D5E 06 %>
+        next.
+end-code
+
+: REV@          3000 0 0 0 21 INTCALL SPLIT ;
+
+CODE EXIT/KEEP  ( exit-code  ----- )
+        <% B431 88D8 8B16 %> MEMORY 2+ W%
+        162B W% CODES W%
+        <% 5655CD21 %>
+        next.
+end-code
+
+CODE BREAK ( state ?set - s )
+        <% B433 88D8 5A 5655CD215D5E 89D3 %>
+        next.
+end-code
+
+: ?BREAK 0 0 BREAK ;
+
+: BREAK=ON   1 1 BREAK DROP ;
+
+: BREAK=OFF  0 1 BREAK DROP ;
+
+: NATION    ( nationcode - pad ) PAD SWAP 3800 OR SYSF DROP PAD ;
+
+: NEWNATION ( nationcode -     )  -1 SWAP 3800 OR SYSF DROP ; \ DOS2.01&higher
+
+
+\ Attributes 1 Write protect 2 hidden 4 system 8 volume 10 directory 20 archive
+
+CODE FMODE@Z ( adrZ -- atr )
+        <% B80043 89DA 5655CD215D5E %>
+        ?EXIT
+        <% 87CB %>
+        next.
+end-code
+
+: FMODER   ( atr  -- :: adr$ -- )
+        CREATE ,
+        DOES>   SWAP $->Z SWAP
+                @  ?DUP
+                IF OVER FMODE@Z OR
+                ELSE DUP  FMODE@Z 0F8 AND
+                THEN  DUP ROT LISTS @ 4301 DOS2 DROP ;
+
+
+1 FMODER WRITE-PROTECT
+2 FMODER HIDE
+4 FMODER SYS-FILE
+0 FMODER CLEAR-ATR
+
+ 1 CONSTANT CONSOLE-IN
+ 2 CONSTANT CONSOLE-OUT
+ 4 CONSTANT NULL-DEVICE
+ 8 CONSTANT CLOCK
+20 CONSTANT BINARY-IMAGE
+40 CONSTANT IOCTL-EOF
+80 CONSTANT DEVICE
+
+: FMODE@      $->Z FMODE@Z ;
+
+CODE DEV@     ( handle  --  dev-info )
+              <% B80044 5655CD215D5E %>
+              ?EXIT
+              D389 W%
+              next.
+end-code
+
+
+CODE DEV!     ( dev-info  handle  --   )      \ protecting reserved bits
+              <% B80044 5655CD215D5E %> ?EXIT
+              <% 81E21000 59 80E1EF 08CA %>
+              <% B80144 5655CD215D5E %> ?EXIT
+              5B C%
+              next.
+end-code
+
+: IOCTL
+            CREATE ,
+            DOES>  >R 4FLIP R> @ DOS2  ;
+
+  ( segment buffer #bytes handle  --  #-bytes-read-or-written )
+  4402 IOCTL DCC$@
+  4403 IOCTL DCC$!
+  4404 IOCTL DRV$@
+  4405 IOCTL DRV$!
+
+CODE <DIR@>   ( drv# pad -- )
+              <% 87DE 5A B80047 53 55 CD21 5D 5E %>  ?EXIT  5B C%
+              next.
+end-code
+
+: DIR@  ( drv# -- )
+        PAD 1+ <DIR@> 50 PAD C! 0 PAD CMEMBER? PAD C! PAD ;
+
+CODE TERMINATE ( return-code -- )  \ machine code:  <% 93 B44C CD21 %>
+        BX AX xchg.
+        AH 4C IB mov.
+        21 int.
+        next.
+end-code
+
+: EXIT?         4D00 DUP SYSF ;
+              ( ie CODES @ 80  SET-DTAL  $" *.*" 0 ?FILE )
+
+CODE SET-DTAL
+        <% 8BD3 8CDF 1F 57 56 55 B8001A CD21 5D 5E 1F 5B %>
+        next.
+end-code
+
+: ?FILE       ( atr adr$ - ) $->Z SWAP DUP ROT LISTS @ 4E00 DOS2 DROP ;
+: +?FILE      ( -- )              4F00 DUP DUP LISTS @ OVER DOS2 DROP ;
+: ?VERIFY     ( -- flag )         5400 DUP DUP LISTS @ OVER DOS2 1 AND NEGATE ;
+
+CODE RENAMEZ  ( oldZ newZ -- )
+              <% 8CD8 8EC0 89DF 5A B80056 5655CD215D5E %> ?EXIT
+              5B C%
+              next.
+end-code
+
+: RENAME      ( old-adr$ new-ard$ -- )
+            >R $->Z R> DUPC@ 1+ PAD SWAP CMOVE
+            PAD COUNT + 0C!
+            PAD 1+ RENAMEZ ;
+
+: RENAME"
+            "WORD $->Z  "WORD COUNT + 0C!
+            HERE 1+  RENAMEZ ;
+
+CODE FTIME@  ( h - t d )
+        <% B80057 5655CD215D5E %> ?EXIT
+        <% 51 87D3 %>
+        next.
+end-code
+
+\ CODE FTIME!  ( t d h - )
+\        <% B80157 5A 59 5655CD215D5E %> ?EXIT
+\        5B C%
+\        next.
+\ end-code
+
+code ftime! ( t d h -- )
+        AX 5701 iw mov.
+        DX pop.
+        CX pop.
+        SI push.
+        BP push.
+        21 int.
+        BP pop.
+        SI pop.
+        BX AX xchg.
+        jnb STOP
+        DI 1412 iw mov.
+        jmp [DI]
+@@ STOP BX   pop.
+        next.
+end-code
+
+ BEHEAD' BREAK
+ BEHEAD' FMODE@Z
+ BEHEAD' FMODER
+ BEHEAD' RENAMEZ
+ BEHEAD' IOCTL
+
+DECIMAL
+
+EXIT
+
+CODE T-SPLIT ( time - sec min hr )
+        AX BX    MOV.
+        AX 001F  IW AND.
+        AX 1     SHL.
+        AX       PUSH.
+        AX BX    MOV.
+        AX 07E0  IW AND.
+        CL 05 IB MOV.
+        AX CL    SHR.
+        AX       PUSH.
+        CL 0B IB MOV.
+        BX CL    SHR.
+        NEXT.
+END-CODE
+

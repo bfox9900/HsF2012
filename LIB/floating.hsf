@@ -1,0 +1,736 @@
+\ FLOATING.HSF  COPYRIGHT 1984, 1986 HARVARD SOFTWORKS, ALL RIGHTS RESERVED )
+\ edited to come closer to ANS Forth for HSF2000 B.Fox 2005
+
+\ Change History
+\ cleaned up the code format to read it easier
+\ changed all D@ to 2@
+\ changed all D! to 2!
+\ Changed all names for relevant HSForth  words to the ANS equivalent
+\       note: HSForth uses Pascal strings not ANS strings.
+\ changed cfa'  to [']  now that it works properly  Oct 28 2014.
+
+
+only forth also assembler also forth definitions
+
+\ default to "387" code because all intel CPUs support that in 2005  :-)
+FALSE [IF]
+        CR ." Compiling for 8087"
+        : XC%    + C% ;
+        : XWAIT  9B C% ;
+
+      [else]
+         CR ." Compiling for 80287/387"
+         : XC% DROP C% ;
+         : XWAIT ;
+      [THEN]
+
+
+\ ANS memory reference helpers for floating point memory spaces
+DECIMAL
+
+10 CELLS CONSTANT AFLOAT     \ define the size of a FP number in HSForth 2000
+
+: FLOATS  ( n -- n )  AFLOAT * ;               \ used like CELLS
+: FLOATS+ ( adr1 -- adr2 ) AFLOAT + ;
+
+
+\ machine code primitives to help build the floating point extensions
+HEX
+CODE FINIT ( --)  E3DB W%  NEXT.  END-CODE
+
+FINIT  \ init floating point NOW
+
+CODE FLDCW  ( cntrlw -- )  <% 45 45 895E00 9BD96E00 5B 9B 4D 4D %> NEXT.  END-CODE
+CODE FSTCW  ( -- cntrlw )  <% 45 45 9BD97E00 53  9B8B5E00 4D 4D %> NEXT.  END-CODE
+CODE FSTSW  ( -- statusw ) <% 45 45 9BDD7E00 53  9B8B5E00 4D 4D %> NEXT.  END-CODE
+
+SYNONYM !CW FLDCW
+SYNONYM @CW FSTCW
+SYNONYM @SW FSTSW
+
+CODE FXAM   <% 9BD9E5 9BDD7E02 53 9B8B5E02 %> NEXT.  END-CODE
+
+\ FTYPE's bits: negative empty nan infinity  normal zero unnormal normal-or-0
+
+CREATE FTYPES 02 C, 20 C, 82 C, A0 C,   09 C, 10 C, 89 C, 90 C,
+              05 C, 40 C, 85 C, 40 C,   20 C, 40 C, 20 C, 40 C,
+
+
+CODE FTYPE  ( -- ftype :: x -- x )
+  <% 9BD9E5 45 45 9BDD7E00 53 31DB 9B 8B4600  88E3 80E307 F6C440 %>
+  <% 7403 80CB08  8A9F %> FTYPES W% <% 88C7 4D 4D %>
+  NEXT.
+END-CODE
+
+cr ." Ftype passed " .s
+
+: FSGN
+        FTYPE DUP 80 AND
+        IF DROP -1
+        ELSE 4 AND 0= ABS
+        THEN ;
+
+: FDEPTH
+        FTYPE 0FF AND 40 =
+        IF 0
+        ELSE 8 @SW 0B rshift 7 AND -
+        THEN ;
+
+: FMODE
+        CREATE D,
+        DOES> 2@  @CW  AND OR !CW ;
+
+
+0000 0F3FF FMODE FROUND
+0400 0F3FF FMODE FROUND-
+0800 0F3FF FMODE FROUND+
+0C00 0F3FF FMODE FTRUNC
+0300 0FCFF FMODE 64BITS
+0200 0FCFF FMODE 53BITS
+0000 0FCFF FMODE 24BITS
+0000 0EFFF FMODE PROJECTIVE
+1000 0EFFF FMODE AFFINE
+
+CODE FSAVE     XWAIT <% DD37 5B %> NEXT.  END-CODE
+
+CODE FRESTORE  XWAIT <% DD27 5B %> NEXT.  END-CODE
+
+CODE FDROP  XWAIT <% DDD8 %>  NEXT.  END-CODE
+
+CODE FNIP XWAIT <% D9C9 %> XWAIT <% DDD8 %> NEXT.  END-CODE
+
+CODE F-ROT  XWAIT <% D9CA %> XWAIT <% D9C9 %> NEXT.  END-CODE
+
+CODE F1X XWAIT <% D9 C9 %> NEXT.  END-CODE
+
+SYNONYM FSWAP F1X
+
+CODE F2X        XWAIT <% D9 CA %>       NEXT.  END-CODE
+CODE F3X        XWAIT <% D9 CB %>       NEXT.  END-CODE
+CODE F4X        XWAIT <% D9 CC %>       NEXT.  END-CODE
+CODE F5X        XWAIT <% D9 CD %>       NEXT.  END-CODE
+CODE F6X        XWAIT <% D9 CE %>       NEXT.  END-CODE
+CODE F7X        XWAIT <% D9 CF %>       NEXT.  END-CODE
+
+CODE F0P        XWAIT <% D9 C0 %>       NEXT.  END-CODE
+CODE F1P        XWAIT <% D9 C1 %>       NEXT.  END-CODE
+CODE F2P        XWAIT <% D9 C2 %>       NEXT.  END-CODE
+CODE F3P        XWAIT <% D9 C3 %>       NEXT.  END-CODE
+CODE F4P        XWAIT <% D9 C4 %>       NEXT.  END-CODE
+CODE F5P        XWAIT <% D9 C5 %>       NEXT.  END-CODE
+CODE F6P        XWAIT <% D9 C6 %>       NEXT.  END-CODE
+
+
+CODE F2R        XWAIT <% D9C9 %> XWAIT <% D9CA %>  NEXT.  END-CODE
+
+SYNONYM F1R     FSWAP
+SYNONYM FOVER   F1P
+SYNONYM FDUP    F0P
+SYNONYM FROT    F2R
+
+CODE F3R
+        XWAIT <% D9C9 %>
+        XWAIT <% D9CA %>
+        XWAIT <% D9CB %>
+        NEXT.
+END-CODE
+
+CODE F4R
+        XWAIT <% D9C9 %>
+        XWAIT <% D9CA %>
+        XWAIT <% D9CB %>
+        XWAIT <% D9CC %>
+        NEXT.
+END-CODE
+
+CODE F5R
+        XWAIT <% D9C9 %>
+        XWAIT <% D9CA %>
+        XWAIT <% D9CB %>
+        XWAIT <% D9CC %>
+        XWAIT <% D9CD %>
+        NEXT.
+END-CODE
+
+CODE F6R XWAIT <% D9C9 %> XWAIT <% D9CA %> XWAIT <% D9CB %> XWAIT <% D9CC %>
+         XWAIT <% D9CD %> XWAIT <% D9CE %> NEXT.  END-CODE
+
+CODE F7R XWAIT <% D9C9 %> XWAIT <% D9CA %> XWAIT <% D9CB %> XWAIT <% D9CC %>
+         XWAIT <% D9CD %> XWAIT <% D9CE %> XWAIT <% D9CF %> NEXT.  END-CODE
+
+
+CODE F=0       XWAIT <% D9EE %>  NEXT.  END-CODE
+CODE F=1       XWAIT <% D9E8 %>  NEXT.  END-CODE
+CODE F=PI      XWAIT <% D9EB %>  NEXT.  END-CODE
+CODE F=L2(10)  XWAIT <% D9E9 %>  NEXT.  END-CODE
+CODE F=L2(E)   XWAIT <% D9EA %>  NEXT.  END-CODE
+CODE F=LOG(2)  XWAIT <% D9EC %>  NEXT.  END-CODE
+CODE F=LN(2)   XWAIT <% D9ED %>  NEXT.  END-CODE
+
+cr ." F=LN(2) passed " .s
+
+CODE F<  <% 45 45 %> XWAIT <% DED9 53 31DB 9B DD7E00 9B 80660141 %>
+         <% 7501 4B 4D 4D %> NEXT.  END-CODE
+
+CODE F=
+        <% 45 45 %>
+        XWAIT <% DED9 53 31DB 9B DD7E00 9B 80660141 %>
+        <% 80760140 7501 4B 4D 4D %>
+        NEXT.
+END-CODE
+
+CODE F>
+        <% 45 45 %> XWAIT <% DED9 53 31DB 9B DD7E00 9B 80660141 %>
+        <% 80760101 7501 4B 4D 4D %>
+NEXT.  END-CODE
+
+: F<=  F> NOT ;
+: F<>  F= NOT ;
+: F>=  F< NOT ;
+
+CODE F0<
+        <% 45 45 %>
+        XWAIT <% D9E4 53 31DB 9B DD7E00 %>
+        XWAIT <% DDD8 80660141 80760101 7501 4B 4D 4D %>
+NEXT.  END-CODE
+
+CODE F0=
+        <% 45 45 %> XWAIT <% D9E4 53 31DB 9B DD7E00 %>
+        XWAIT <% DDD8 80660141 80760140 7501 4B 4D 4D %>
+NEXT.  END-CODE
+
+CODE F0>  <% 45 45 %> XWAIT <% D9E4 53 31DB 9B DD7E00 %> XWAIT
+          <% DDD8 80660141 7501 4B 4D 4D %> NEXT.  END-CODE
+
+CODE FMIN <% 45 45 %> XWAIT <% D8D1 9B DD7E00 9B 80660141 74   %> 04 1 XC%
+          XWAIT <% DDD9 EB %> 02 1 XC% XWAIT <% DDD8 4D 4D %> NEXT.  END-CODE
+
+CODE FMAX <% 45 45 %> XWAIT <% D8D1 9B DD7E00 9B 80660141 74   %> 04 1 XC%
+          XWAIT <% DDD8 EB %> 02 1 XC% XWAIT <% DDD9 4D 4D %> NEXT.  END-CODE
+
+CODE FRNDINT XWAIT <% D9FC %> NEXT.  END-CODE
+
+CODE F+      XWAIT <% DEC1 %> NEXT.  END-CODE
+CODE F-      XWAIT <% DEE9 %> NEXT.  END-CODE       ( ::  x  y   --  x op y )
+CODE -F-     XWAIT <% DEE1 %> NEXT.  END-CODE
+SYNONYM WHOLE FRNDINT
+
+
+: FRAC     ( f - f-[f] )      FDUP FRNDINT F- ;
+: FSPLIT   ( f - [f] f-[f] )  FDUP FRNDINT FDUP F-ROT F- ;
+: FNORM1     FTYPE  2 AND IF FRNDINT THEN ;
+: FNORM2     FNORM1 FSWAP FNORM1 ;
+
+CODE F*      XWAIT <% DEC9 %>  NEXT.  END-CODE
+CODE F/      XWAIT <% DEF9 %>  NEXT.  END-CODE
+CODE F\      XWAIT <% DEF1 %>  NEXT.  END-CODE
+CODE FPREM   XWAIT <% D9F8 %>  NEXT.  END-CODE
+CODE F2*     XWAIT <% D9E8 %>                  XWAIT <% D9C9 %>
+             XWAIT <% D9FD %> XWAIT <% D9C9 %> XWAIT <% DDD8 %> NEXT.  END-CODE
+CODE F2/     XWAIT <% D9E8 %> XWAIT <% D9E0 %> XWAIT <% D9C9 %>
+             XWAIT <% D9FD %> XWAIT <% D9C9 %> XWAIT <% DDD8 %> NEXT.  END-CODE
+CODE FSQRT   XWAIT <% D9FA %>  NEXT.  END-CODE
+CODE F**2    XWAIT <% D8C8 %>  NEXT.  END-CODE
+CODE FABS    XWAIT <% D9E1 %>  NEXT.  END-CODE
+CODE FNEGATE XWAIT <% D9E0 %>  NEXT.  END-CODE
+CODE FSCALE  XWAIT <% D9FD %>  NEXT.  END-CODE   ( :: exp  x  --  x * 2 ** exp  )
+CODE FXTRACT XWAIT <% D9F4 %>  NEXT.  END-CODE   ( :: x * 2 ** exp  --  exp  x  )
+
+cr ." FXTRACT passed " .s
+
+VARIABLE  1/2    2 ALLOT    3F00.0000 1/2    2!
+
+CODE F2**  ( ::3   x  --  2.0 ** x  )  (  x  =  n.nn   or   -n.nn   )
+ <% 9B D97E02 9B D97E04 9B 8166 02 FF F3 804E0304 %>
+ XWAIT <% D96E02 %> XWAIT <% D9C0 %> XWAIT <% D9FC %>
+ XWAIT <% D96E04 %> XWAIT <% DCE9 %> XWAIT <% D9C9 %>
+ XWAIT <% D906 %>           1/2 W%   XWAIT <% D9C9 %>
+ XWAIT <% D9F8 9B DD7E02 %> XWAIT <% DDD9 %>
+ XWAIT <% D9F0 %> XWAIT <% D9E8   %> XWAIT <% DEC1 9B %>
+ <% F6460340 75   %> 10  5 XC%  \ 2/8/90  -2.7E-20<X<0
+ <% F6460302 74   %> 08  4 XC%
+ XWAIT <% D9E8 %> XWAIT <% D8C0 %> XWAIT <% D9FA %> XWAIT <% DEC9 %>
+ XWAIT <% D9FD %> XWAIT <% DDD9 %>  NEXT.  END-CODE
+CODE F*L2(10) XWAIT <% D9E9 %> XWAIT <% DEC9 %>   NEXT.  END-CODE
+CODE F*L2(X)  XWAIT <% D9 F1  %>            NEXT.  END-CODE
+
+
+
+CODE FLOG2  ( - ::2   x  -- log2[x] )
+            XWAIT <% D9E8 %> XWAIT <% D9C9 %> XWAIT <% D9F1 %> NEXT.  END-CODE
+
+CODE FLN    ( - ::2   x  -- loge[x] )
+            XWAIT <% D9ED %> XWAIT <% D9C9 %> XWAIT <% D9F1 %> NEXT.  END-CODE
+
+CODE FLOG10 ( - ::2   x  -- logt[x] )
+            XWAIT <% D9EC %> XWAIT <% D9C9 %> XWAIT <% D9F1 %> NEXT.  END-CODE
+
+
+: F10**    ( - ::3   x  --  10**x  )         F*L2(10)  F2**           ;
+: F**      ( - ::3 x y  --   x**y  )   FSWAP F*L2(X)   F2**           ;
+
+: F/MOD    ( - ::4 x y  --  rm ]q[ )
+           FOVER FOVER F/  @CW FTRUNC WHOLE !CW FDUP FROT F* FROT -F- FSWAP ;
+
+: FMOD     FOVER FOVER F/  @CW FTRUNC WHOLE !CW F* F- ;
+
+
+CODE FI    XWAIT <% DF4600 %> NEXT.  END-CODE
+CODE FI'   XWAIT <% DF46FE %> NEXT.  END-CODE
+CODE FJ    XWAIT <% DF46FC %> NEXT.  END-CODE
+CODE FJ'   XWAIT <% DF46FA %> NEXT.  END-CODE
+CODE FK    XWAIT <% DF46F8 %> NEXT.  END-CODE
+CODE FK'   XWAIT <% DF46F6 %> NEXT.  END-CODE
+
+\ CHANGE: number conversion routines comply with ANS  ... MAYBE :-)
+CODE S>F  <% 45 45  895E00 %>         XWAIT <% DF4600 5B 9B 4D 4D  %> NEXT.  END-CODE
+CODE D>F  <% 83C504 895E00 8F46FE %>  XWAIT <% DB46FE 5B 9B 83ED04 %> NEXT.  END-CODE
+CODE Q>F  <% 83C508 895E00 8F46FE 8F46FC 8F46FA %>
+                                       XWAIT <% DF6EFA 5B 9B 83ED08 %> NEXT. END-CODE
+CODE F>S  <% 45 45  53 %> XWAIT <% DF5E00 9B         8B5E00 4D 4D  %> NEXT.  END-CODE
+CODE F>D  <% 83C504 53 %> XWAIT <% DB5EFE 9B  FF76FE 8B5E00 83ED04 %> NEXT.  END-CODE
+CODE F>Q  <% 83C508 53 %> XWAIT <% DF7EFA 9B  FF76FA FF76FC FF76FE %>
+                                                   <% 8B5E00 83ED08 %> NEXT. END-CODE
+
+DECIMAL
+: SIXTY    60 S>F ;
+: HUNDRED 100 S>F ;
+
+
+: TIME->F  ( c s m h - ::3  -- h.msc )
+        S>F
+        ROT S>F HUNDRED F/
+        SWAP S>F F+ SIXTY F/
+        S>F F+ SIXTY F/ F+ ;
+
+: F->TIME  ( - c s m h ::2  h.msc -- )
+        @CW >R FROUND- FSPLIT FSWAP F>S >R
+        SIXTY F* FSPLIT FSWAP F>S >R
+        SIXTY F*   FSPLIT FSWAP F>S
+        HUNDRED F* WHOLE F>S SWAP TR> !CW ;
+
+
+HEX
+CODE  I16@   XWAIT <% DF 07 5B 9B %> NEXT.  END-CODE
+CODE  I16!   XWAIT <% DF 1F 5B 9B %> NEXT.  END-CODE
+CODE  I32@   XWAIT <% DB 07 5B 9B %> NEXT.  END-CODE
+CODE  I32!   XWAIT <% DB 1F 5B 9B %> NEXT.  END-CODE
+CODE  I64@   XWAIT <% DF 2F 5B 9B %> NEXT.  END-CODE
+CODE  I64!   XWAIT <% DF 3F 5B 9B %> NEXT.  END-CODE
+CODE  R32@   XWAIT <% D9 07 5B 9B %> NEXT.  END-CODE
+CODE  R32!   XWAIT <% D9 1F 5B 9B %> NEXT.  END-CODE
+CODE  R64@   XWAIT <% DD 07 5B 9B %> NEXT.  END-CODE
+CODE  R64!   XWAIT <% DD 1F 5B 9B %> NEXT.  END-CODE
+CODE  R64+!  XWAIT <% DC 07 5B %> XWAIT <% DDD8 %> NEXT.  END-CODE
+CODE  R80@   XWAIT <% DB 2F 5B 9B %> NEXT.  END-CODE
+CODE  R80!   XWAIT <% DB 3F 5B 9B %> NEXT.  END-CODE
+CODE  BC2@   XWAIT <% DF 27 5B 9B %> NEXT.  END-CODE
+CODE  BCD@   XWAIT <% DF 37 5B 9B %> NEXT.  END-CODE
+CODE  DOFCON XWAIT <% DB6D02   9B %> NEXT.  END-CODE
+
+\ ANS Forth F! F@  are deferred so we can choose from the long list of options
+DEFER F!
+DEFER F@
+
+64BITS
+
+' R64! IS F!
+' R64@ IS F@
+
+
+cr ." dofcon passed " .s
+
+CODE FLIT
+        XWAIT <% DB2C  81C60A00 %>              \ R80 [SI] FLD.  SI 0A IW ADD.
+        NEXT.
+END-CODE
+
+: F,  ( FLOAT -- )  HERE-L 1 FLOATS ALLOT R80! ;
+
+: FLITERAL  THE STATE IF  COMPILE FLIT F, THEN ; IMMEDIATE
+
+: FCONSTANT
+        CREATE   F,
+        DOES> R80@ ;
+
+         \ ;' DOFCON
+
+: FVARIABLE
+        CREATE 1 FLOATS ALLOT
+        ;' DOVAR
+
+CODE FRDROP  <% 83ED0A %>                       NEXT.  END-CODE
+
+CODE F>R     <% 83C50A %> XWAIT <% DB7EF8 %>    NEXT.  END-CODE
+
+CODE FR>     XWAIT <% DB6EF8 9B 83ED0A %>       NEXT.  END-CODE
+
+CODE FR@     XWAIT <% DB6EF8 %>                 NEXT.  END-CODE
+
+CODE FRPICK
+        <% 01DB 89DF 01DB 01DB 01DF 4F 4F F7DF %>
+        XWAIT <% DB2B 9B 5B %>
+NEXT.  END-CODE
+
+CODE FRPUT
+        <% 01DB 89DF 01DB 01DB 01DF 4F 4F F7DF %> XWAIT <% DB3B 9B 5B %>
+NEXT.  END-CODE
+
+\ compute some constants
+F=L2(E)  F2**           FCONSTANT F=E
+
+F=L2(10) F=LN(2) F*     FCONSTANT F=LN(10)
+
+
+: FE**  F=E FSWAP F** ;
+SYNONYM FEXP FE**
+
+: FINV  F=1       F\  ;
+SYNONYM 1/F FINV
+
+\ \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\  Binary Code Decimal (BCD) IO words
+\  max 18 decimal digits   +/-n.nnnnnnnnnnnnnEnnnn
+
+HEX
+VARIABLE FPL  8000 FPL !    \ Use of DPL interferes with multitasking. *****
+
+: BCD-ERROR   1 ABORT" $->BCD  Illegal character" ;
+
+\ This is alot of machine code!
+CODE $.>BCD  ( pad -- #digits             0=noE )
+             ( pad -- #digits  pad+>exp  -1=negE/+1=posE )
+ <% 89DF 30ED 8A0F 4B 30E4 47 8A05 3C2D 7505  C60780 E205  3C2B 7504  49 %>
+ <% 47 8A05 3C2C 741B  3C30 7506  FF0E %> FPL W%  <% EB11 %>
+ <% 3C2E 7514 F606 %> FPL 1+ W% <% C0 7A3E C706 %> FPL W% <% EEFF E2DC EB73 %>
+ <% 47 8A05 3C39 7F1A  3C30 7C16  2C30 F6C401 7509  4B D0E0 D0E0 D0E0 D0E0 %>
+ <% 0807 FEC4 EB2A  3C2C 7502 EB24 8B16 %> FPL W% <% 3C2E 750A  F6C6C0 7B0B %>
+ <% BF %> ' BCD-ERROR CFA W% <% FF25  3C45 7412  EBF5  %>
+ <% 88E2 30F6 81EA1200 8916 %> FPL W% <% E2B3 EB24  F6C6C0 7A0C %>
+ <% 31D2 88E2 81EA1200 8916 %> FPL W% <% 8A4501 BB0100 3C2D 7504  F7DB EB04 %>
+ <% 3C2B 7501 47 F606 %> FPL 1+ W% <% C0 7A0C 31D2 88E2 81EA1200 8916 %> FPL W%
+ <% 86E0 30E4 50 89D8 40 D1E8 D1E8 7503  57 EB02  31DB %>
+  NEXT.
+END-CODE
+
+cr ." $.>bcd passed " .s
+
+
+: $->BCD  ( pad -- integer?  #digits )
+        DPL @ FPL !
+        DUP PAD <>
+        IF PAD SWAP 2DUP C@ 1+ CMOVE THEN
+        8000 FPL !
+        PAD 20 - 20 0 FILL
+        PAD COUNT + 0!
+        [CHAR] e SWAP CMEMBER? ?DUP
+        IF [CHAR] E SWAP PAD IC! THEN
+
+        [CHAR] . PAD  CMEMBER?
+        [CHAR] E PAD CMEMBER? OR 0=
+        PAD $.>BCD
+
+        FPL @  SWAP  ?DUP
+        IF      ROT 0. ROT BASE @ >R
+                0A BASE !  CONVERT
+                R> BASE !
+                PAD COUNT + - OR ABORT" Exponent?"
+                SWAP 1-
+                IF NEGATE
+                THEN   +
+        THEN PAD ! ;
+
+: BCD-IN ( -- integer? #digits ) BL TEXT PAD  $->BCD ;
+
+: F>PAD   PAD 80 + FSAVE    ;
+
+: PAD>F   PAD 80 + FRESTORE ;
+
+: BCD->F  ( integer? #digits -- #digits  ::  -- r80 )
+        F>PAD
+        PAD @ S>D D>F F10**  PAD 0A -  BC2@ F*  SWAP
+        IF    @CW FROUND WHOLE !CW
+        THEN  F>R PAD>F FR>  ;
+
+CREATE TEN 0A ,
+CREATE 17-D 11 ,
+
+: F->BCD  ( --  ::  r80 -- )      F>R  F>PAD  FR>
+        FDUP F0=
+        IF      F=0 ELSE FXTRACT FSWAP THEN             \ .n  exp
+                FDUP  F=L2(10) F/
+                @CW FROUND- FRNDINT !CW                 \ .n  exp     ]exp10[
+                FSWAP  FOVER  F=L2(10) F*  F-           \ .n ]exp10[  .exp2
+                F2**   FROT   F*                        \    ]exp10[ 1<n<19.9..
+                FDUP F0< >R FABS  FDUP TEN I16@ F< NOT
+                IF
+                        TEN I16@ F/ FSWAP F=1 F+ FSWAP
+                THEN
+                DUP 1- NEGATE S>F F10** F2/ F+
+                FDUP TEN I16@ F< NOT
+                IF      TEN I16@ F/ FSWAP F=1 F+ FSWAP
+                THEN     R>  IF FNEGATE
+         THEN   ( FLTFIX )
+         17-D I16@   F10**  F*  FRNDINT
+         PAD 0A - BCD@
+         17-D I16@    F-  PAD I16!  PAD>F ;
+
+: NIBBLE#
+        PAD I' 2/ 2+ - C@ I' 1 AND
+        IF 0F AND
+        ELSE 16/
+        THEN 30 + OVER C! 1+ ;
+
+: SIGNF#
+        PAD 1- C@ 80 AND
+        IF [CHAR] - PAD 1+ C! THEN ;
+
+: BCD->$E ( #digits -- pad )     ( 89 67 45 23 19 78 56 34 12 80 ex.p )
+        DECIMAL
+        PAD @ 11 + SWAP   2018 PAD !   SIGNF#
+        PAD 2- C@   16/ 30 + 2E00 OR  PAD 2I! PAD 4+
+        SWAP 1- 1 2DUP >
+        IF DO NIBBLE# LOOP
+        ELSE < IF 1- THEN
+        THEN
+        2B45 OVER ! 1+  OVER 0<
+        IF  [CHAR] - OVER C!
+        THEN  1+
+        DUP PAD - >R
+        SWAP ABS  0 <# THE #E 1 DO # LOOP OVER IF #S THEN #>
+
+        DUP 1- +>R
+        ROT SWAP CMOVE
+        R> PAD C!
+        PAD ;
+
+
+
+: BCD->$. ( #digits -- pad )     ( 89 67 45 23 19 78 56 34 12 80 ex.p )
+        PAD 1- @ B->S 1+
+        IF  PAD  DUP@ 12 +  2014 PAD !
+            2E PAD 2+ C!
+            SIGNF#  \ #d pad exp
+            DUP  0<
+            IF DUP ABS PAD  3 + SWAP 30 FILL SWAP OVER - 1+
+            ELSE SWAP
+            THEN  2+   \ #d exp p+2?+n+1
+            ROT 0
+            DO
+                SWAP DUP 0=
+                IF 1- SWAP  2E OVER C! 1+
+                ELSE 1- SWAP
+                THEN  NIBBLE#
+            LOOP
+            OVER 0< IF NIP
+                    ELSE 2DUP SWAP 30 FILL  +  2E OVER C! 1+
+                    THEN 1- PAD -
+        ELSE PAD 1+ OVER [CHAR] ? FILL
+        THEN  PAD C!
+        PAD ;
+
+
+8  USER #PLACES
+13 USER #FIELD
+
+CREATE X1    ," +-"
+CREATE X2    ," 0123456789,"
+CREATE X3    ," 0123456789"
+
+: FLOAT#?    ( adr - adr  0=OK )
+        DUPC@
+        IF      DUP COUNT +
+                OVER ++c@ X1 CMEMBER? 0=
+                IF 1- THEN
+                BEGIN
+                     ++c@ X2              \ factor this at some point..
+                     CMEMBER? 0=
+                UNTIL
+                DUPC@ [CHAR] . =
+                IF
+                        BEGIN
+                             ++c@ X2       \ and this too!
+                             CMEMBER? 0=
+                        UNTIL
+                THEN  DUPC@ [CHAR] E =
+                IF      ++c@ X1 CMEMBER? 0=
+                        IF 1-
+                        THEN
+                                BEGIN                 \ and maybe even this
+                                     ++c@ X3
+                                     CMEMBER? 0=
+                                UNTIL
+                THEN  <>
+
+        ELSE  DROP 3001 PAD ! PAD 0
+
+        THEN ;
+
+cr ." FLOAT#? passed " .s
+
+: >FLOAT  ( $ -- f)             \ HsForth still uses counted strings. (non-ANS)
+        $->BCD BCD->F DROP ;
+
+
+: F#IN
+        BEGIN
+                IN$ FLOAT#?
+        WHILE
+                DROP ." Redo "
+        REPEAT
+         8000 IS DPL   PAD 20 - 20 0 FILL   >FLOAT ;
+
+
+: %          BCD-IN  BCD->F DROP  [COMPILE] FLITERAL ; IMMEDIATE
+
+: GF#        0FF LEAD LIMIT$ LIMITED >FLOAT ;
+
+: FCHECK     DEPTH 2 < ABORT" Short stack" ;
+
+: F->$E      ( .r nd w -- w pad )
+             FCHECK OVER THE #E + 2+ MAX SWAP  1+   F->BCD  BCD->$E ;
+
+: F->$.      ( .r nd w -- w pad )
+        FCHECK DUP F>R F>PAD FR@ FABS FLOG10 F>S  PAD>F FR>  2+ <
+        IF    DUP THE #E 2+ - ROT MIN 0 MAX  SWAP   F->$E
+        ELSE  SWAP F->BCD  BCD->$.  2DUP C@ MIN OVER C!
+        THEN ;
+
+
+: F->$  THE #PLACES THE #FIELD F->$. NIP ;
+
+
+: +BLANKS  ( w adr -- adr w )
+           COUNT ROT 2DUP <
+           IF 2>R DUP R@ + I' R> - BLANK R>
+           ELSE DROP
+           THEN ;
+
+
+: BLANKS+   ( w pad -- pad-w+n w )
+           COUNT ROT 2DUP <
+           IF DUP>R - NEGATE DUP>R - DUP R> BLANK R>
+           ELSE DROP
+           THEN ;
+
+: E$R   ( .r nd w - )  F->$E   BLANKS+ ;     : E.R E$R TYPE ;
+: E$L   ( .r nd w - )  F->$E  +BLANKS  ;     : E.L E$L TYPE ;
+: E.                THE #PLACES 0 F->$E       $. DROP SPACE ;
+: F$R   ( .r nd w - )  F->$.   BLANKS+ ;     : F.R F$R TYPE ;
+: F$L   ( .r nd w - )  F->$.  +BLANKS  ;     : F.L F$L TYPE ;
+: F.                THE #PLACES DUP 6+ F->$.  $. DROP SPACE ;
+
+: .FS
+        FDEPTH 0=
+        IF ." empty fstack "
+        ELSE    F>R
+                F6P F.
+                F5P F.
+                F4P F.
+                F3P F.
+                F2P F.
+                F1P F.
+                F0P F.
+                FR@ F.
+                FR>
+        THEN ;
+
+\ words to index into memory with different data sizes is a segment pointed to
+\ by the ES: register
+
+CODE  I16@E  XWAIT <% 26 DF07 5B 9B %> NEXT.  END-CODE
+CODE  I16!E  XWAIT <% 26 DF1F 5B 9B %> NEXT.  END-CODE
+CODE  I32@E  XWAIT <% 26 DB07 5B 9B %> NEXT.  END-CODE
+CODE  I32!E  XWAIT <% 26 DB1F 5B 9B %> NEXT.  END-CODE
+CODE  I64@E  XWAIT <% 26 DF2F 5B 9B %> NEXT.  END-CODE
+CODE  I64!E  XWAIT <% 26 DF3F 5B 9B %> NEXT.  END-CODE
+
+CODE  R32@E  XWAIT <% 26 D907 5B 9B %> NEXT.  END-CODE
+CODE  R32!E  XWAIT <% 26 D91F 5B 9B %> NEXT.  END-CODE
+CODE  R64@E  XWAIT <% 26 DD07 5B 9B %> NEXT.  END-CODE
+CODE  R64!E  XWAIT <% 26 DD1F 5B 9B %> NEXT.  END-CODE
+CODE  R64+!E XWAIT <% 26 DC07 5B %> XWAIT <% DDD8 %> NEXT.  END-CODE
+CODE  R80@E  XWAIT <% 26 DB2F 5B 9B %> NEXT.  END-CODE
+CODE  R80!E  XWAIT <% 26 DB3F 5B 9B %> NEXT.  END-CODE
+
+CODE  BC2@E  XWAIT <% 26 DF27 5B 9B %> NEXT.  END-CODE
+CODE  BCD@E  XWAIT <% 26 DF37 5B 9B %> NEXT.  END-CODE
+
+\ words to index into a FAR memory segment
+CODE  I16@L  <% 8CDA 1F %> XWAIT <% DF07 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  I16!L  <% 8CDA 1F %> XWAIT <% DF1F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  I32@L  <% 8CDA 1F %> XWAIT <% DB07 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  I32!L  <% 8CDA 1F %> XWAIT <% DB1F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  I64@L  <% 8CDA 1F %> XWAIT <% DF2F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  I64!L  <% 8CDA 1F %> XWAIT <% DF3F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R32@L  <% 8CDA 1F %> XWAIT <% D907 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R32!L  <% 8CDA 1F %> XWAIT <% D91F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R64@L  <% 8CDA 1F %> XWAIT <% DD07 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R64!L  <% 8CDA 1F %> XWAIT <% DD1F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R64+!L <% 8CDA 1F %> XWAIT <% DC07 8EDA 5B %> XWAIT <% DDD8 %> NEXT.  END-CODE
+CODE  R80@L  <% 8CDA 1F %> XWAIT <% DB2F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  R80!L  <% 8CDA 1F %> XWAIT <% DB3F 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  BC2@L  <% 8CDA 1F %> XWAIT <% DF27 8EDA 5B 9B %> NEXT.  END-CODE
+CODE  BCD@L  <% 8CDA 1F %> XWAIT <% DF37 8EDA 5B 9B %> NEXT.  END-CODE
+
+cr ." 7 passed " .s
+
+\  HS/FORTH utility to allow default floating point interp&comp
+\  Initiate with FLOATING-POINT and restore normal operation with INTEGERS .
+\
+: #INT-F
+        [CHAR] . OVER CMEMBER?
+        IF      DUPC@ 1+ PAD SWAP CMOVE
+                PAD >FLOAT [COMPILE] FLITERAL
+        ELSE #INT79
+        THEN ;
+
+\ HSForth words was called 'FLOATS'.  Has a different meaning in ANSForth
+\ Had to change to 'FLOATING-POINT'
+
+: FLOATING-POINT        ['] #INT-F  TO #INTERPRET ; IMMEDIATE
+
+: INTEGERS              ['] #INT79  TO #INTERPRET ; IMMEDIATE
+
+
+
+
+true [if]
+        BEHEAD' FTYPES
+        BEHEAD' FMODE
+        BEHEAD' X1
+        BEHEAD' X2
+        BEHEAD' X3
+        BEHEAD' +BLANKS
+        BEHEAD' BLANKS+
+        BEHEAD' BCD-ERROR
+        BEHEAD' $.>BCD
+        BEHEAD' $->BCD
+        BEHEAD' F->BCD
+        BEHEAD' NIBBLE#
+        BEHEAD' SIGNF#
+        BEHEAD' BCD->$E
+        BEHEAD' BCD->$.
+
+        BEHEAD' #INT-F
+        BEHEAD' 17-D
+        BEHEAD' TEN
+[then]
+
+\ ANS flags to show floating point is installed in the system
+
+
+TRUE  TO FLOATING
+FALSE TO FLOATING-EXT                   \ HSForth has no DOUBLE floating point but it has 80 bit
+
+ FLOATING-POINT
+
+ 999999999999999999999999999999999999999. FCONSTANT MAX-FLOAT
+
+ INTEGERS
+
+
+DECIMAL
+cr ." floating compiled. Set to 64bits" cr .s
+
+only forth also assembler also forth definitions

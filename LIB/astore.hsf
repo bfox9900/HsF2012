@@ -1,0 +1,129 @@
+\ >a  !a  +a @a  Chuck's new invention for replacing  ! and @
+\ because the 486 is so register starved we have to use variables
+
+variable zseg    \ this is the segment register
+variable Zx      \ this is our address register
+
+code >a ( adr -- )
+        Zx +[] bx mov.
+        bx pop.
+        next.
+end-code
+
+code !a ( n -- )
+        ax  bx mov.
+        bx  Zx +[] mov.
+        [bx] ax mov.
+        bx pop.
+        next.
+end-code
+
+code +a ( n -- )
+        Zx +[] bx add.
+        bx pop.
+        next.
+end-code
+
+code @a ( -- n )
+        bx  push.
+        bx  Zx +[] mov.
+        bx [bx] mov.
+        next.
+end-code
+
+\ Fetch .....................................................................
+code @a++ ( -- n )    \ fetch with post increment by 2
+        bx  push.
+        bx  Zx +[] mov.
+        bx [bx] mov.
+        Zx +[]  2 IW add.
+        next.
+end-code
+
+code @a+ ( -- n )    \ fetch with post increment by 1
+        bx  push.
+        bx  Zx +[] mov.
+        bx [bx] mov.
+        Zx +[] 1 IW add.
+        next.
+end-code
+
+
+\ Store .....................................................................
+code !a++ ( n -- )      \ store with post increment by 2
+        ax  bx mov.
+        bx  Zx +[] mov.
+        [bx] ax mov.
+        bx pop.
+        Zx +[]  2 IW add.
+        next.
+end-code
+
+code C!a+ ( c -- )      \ byte store with post increment by 1
+        ax  bx mov.
+        bx  Zx +[] mov.
+        [bx] ax mov.
+        bx pop.
+        Zx +[] 1 IW add.
+        next.
+end-code
+
+
+code a> ( -- adr)
+        bx push.
+        bx Zx +[] mov.
+        next.
+end-code
+
+true [if]
+
+( test code )
+
+10000 constant size
+
+create q size cells allot
+
+: nfillit    \ NORMAL forth fill it
+        size 0
+        do
+           i  q i cells+ !
+        loop ;
+
+: fillit
+        q >a
+        size 0
+        do
+           i !a
+           cell +a
+        loop ;
+
+: fastfill
+        q >a
+        size 0
+        do
+          i !a++
+        loop ;
+
+: seeit
+        q >a
+        size 0
+        do
+          @a 4 .r space
+          cell +a
+        loop ;
+
+: fseeit
+        q >a
+        size 0
+        do
+          @a+ 4 .r space
+        loop ;
+
+: ntest         32000 begin nfillit  1- dup 0= until ;
+
+: test          32000 begin fillit   1- dup 0= until ;
+
+: ftest         32000 begin fastfill 1- dup 0= until ;
+
+[then]
+

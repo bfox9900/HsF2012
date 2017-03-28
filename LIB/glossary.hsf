@@ -1,0 +1,113 @@
+HEX \ GLOSHELP.HSF     Copyright 1990, Harvard Softworks, All rights reserved.
+
+\  Initiate with  F9 key.    Close help window with  F10  key.
+\  Respond to ? prompt with word-or-fragment<enter>, 
+\           (or the null string to switch to help window)
+\           Y to accept initial offering, N to continue search.
+\  WBUF buffering is optional.  Make sure you have enough free memory since
+\       the buffer is in the free memory area starting CHUNKS bytes above 
+\       the top allocated segment. See Windowed Graphics Addendum for
+\       number of bytes needed for window buffers.
+
+
+FIND HASH-OFF 0= ?( FLOAD FASTCOMP )
+FIND $FINDL   0= ?( FLOAD STRINGS  )
+FIND DUMP     0= ?( FLOAD TOOLBOX  )  ( Not needed but symbiotic.)
+FIND W-SAVE   0= ?( FLOAD WBUF     )
+FIND F1=      0= ?( FLOAD FUNKEYS.FOX )
+FIND RED      0= ?( FLOAD COLORS.FOX )
+
+HEX
+CREATE HELP-FILE  ," GLOSSARY.TXT"           \ Current help file.
+                  ,"                     "   \ Room for 32 byte fspec.
+                    \ Set with:  $" fspec" HELP-FILE $!
+
+  09 VAR HELP-SIZE  \ Number of lines in HELP window, minimum for word groups.
+   0 VAR ?HELP      \ HELP window off(0) or on (address of work window).
+
+0300 VAR EXTENT \ 768 bytes - Should be sufficient to include longest item.
+                \ If too small, tails of long items at chunk boundaries
+                \ could fail to be displayed.
+
+1200 VAR CHUNKS \ Increasing this requires more free memory and improves
+                \ response time with a fast hard disk only slightly.
+                \ With a floppy, you might want to try 8200 or C200
+                \ reducing max disk accesses to 4 or 3 (with this file)
+
+0 0  WHITE CYAN FG&BG 1 1  OVER HELP-SIZE + 1- 4E MAKE-WINDOW HELP-WINDOW
+
+CREATE  "LF  1 C, 0A C,
+CREATE ETC.  2 C, BL C, 09 C,    \ Continue if line starts with blank or tab 
+CREATE 3BS   3 C, 8  C,  8 C, 8 C, 
+: >WORK     ?HELP ?DUP
+            IF >W THEN
+            ROW,COL DROP WUR <
+            IF WH THEN
+            ['] DROP IS EMIT ; \ Revectoring prevents cursor walk
+
+  \ down the screen with each help. Depends on QUIT revectoring to CONSOLE.
+  \ Note: If you set IO-STAY you must remove the revectoring of EMIT !!!
+
+AT: NO-SPACE    C@L ETC. CMEMBER? NOT ;     \ Looking at character after LF
+    \ NO-SPACE assumes entry starts with character following LF and continues
+    \ for all lines starting with space or tab, stopping on another first line
+    \ or a blank line. INDENTED  is for paragraphs. Could also use delimiters.
+    \ AT: INDENTED    C@L ETC. CMEMBER? ;
+
+CREATE START  CA' NO-SPACE   DEFINES START
+CREATE STOP   CA' NO-SPACE   DEFINES STOP
+
+: HELP
+        ?HELP 0=       THE W# IS ?HELP
+        IF  HELP-SIZE 1- HELP-WINDOW 1+ C!   HELP-SIZE 1+ WMAIN 3+ C!
+            HELP-WINDOW >W
+            ( \ ***** optional )  FREE-SEG CHUNKS W-SAVE
+            WIPE ( WB-NORM )
+        ELSE  HELP-WINDOW >W THEN
+              HELP-FILE  OPEN-R  >R                  (        rs: handle )
+              CR ." Find:" IN$ DROP
+              PAD C@ 0=
+              IF
+                  TDROP R> CLOSEH QUIT
+              THEN  \ ****
+       BEGIN
+       FREE-SEG 0 CHUNKS R@   READH
+       CHUNKS EXTENT -   MIN  DUP>R EXTENT >  ( flag   rs: #b handle )
+       WHILE       0
+             BEGIN
+             PAD  FREE-SEG ROT R@ $FINDL       ( seg:ofst flag rs: #b h )
+             WHILE 1+
+                   BEGIN
+                     1- "LF -ROT        0 $FINDL DROP ( s:o  rs: adr #b h )
+                     DDUP 1+ START
+                   UNTIL   1+  DDUP
+                   BEGIN
+                       "LF -ROT R@ EXTENT + $FINDL DROP
+                        1+ DDUP STOP
+                   UNTIL
+                   PLUCK DUP>R OVER- 2-  0D EMIT  TYPEL
+                   4C CTAB ." ..?" ?YN  3BS $.
+                   IF
+                     DRDROP ( RDROP ) R> CLOSEH  >WORK TDROP QUIT
+                   THEN
+                   ( else )  0D EMIT 4D SPACES    R> \ 1+
+            REPEAT
+            DDROP RDROP   EXTENT NEGATE S->D R@ LSEEK+ DDROP
+      REPEAT
+      RDROP R> CLOSEH >WORK TDROP QUIT ;
+
+: HELP-OFF
+        THE W# HELP-WINDOW =
+        IF  >WORK
+        ELSE  ?HELP
+              IF
+                 ( \ **** optional )
+                 HELP-WINDOW >W  FREE-SEG CHUNKS W-RESTORE
+                 0 WMAIN 3+ C!  >WORK  0 IS ?HELP
+              THEN
+        THEN
+        TDROP QUIT ;
+
+F9= HELP         \ Assign HELP to Fn9
+F10= HELP-OFF    \ Assign HELP-OFF to Fn10
+BEHEAD'' HELP HELP-OFF

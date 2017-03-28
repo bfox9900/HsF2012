@@ -1,0 +1,53 @@
+\ FTYPEL for direct to video ram screen update
+
+\ FTYPEL and F$.L are used to print to the screen very quickly. 
+\ They are NOT re-directed to other I/O devices like other HS/FORTH words.
+\ They CAN be used with HS/FORTH windows since they start printing
+\ at the current cursor position. They DO NOT however respect the window
+\ boundaries. This can be overcome in a window by FTYPEing line by line
+\ terminating each line with a CR. The speed improvement compared to
+\ TYPE or $. is still excellent.
+
+FIND FTYPE   0= ?( FLOAD FTYPE.FOX )
+
+HEX
+\ Assembler source for the above machine code
+
+CODE <FTYPEL> ( LISTS@, source-seg, adr, len, vid-ram-seg, offset, watrc -- )
+              AH BL  MOV.                \ WATRC          -> AH 
+              DI POP.                    \ screen postion -> DI
+              ES POP.                    \ video ram adr  -> ES
+              CX POP.                    \ string len     -> CX 
+              DX SI MOV.                 \ temp store SI  -> DX
+              SI POP.                    \ put string adr -> SI
+              DS POP.                    \ string segment -> DS
+ >>> LOOP2
+              LODSB.                     \ byte into AL reg
+              STOSW.                     \ store AX reg to video
+              LOOPCX LOOP2               \ loop until CX=0
+
+              SI DX MOV.                 \ restore SI from DX
+              BX POP.                    \ POP the stack into BX
+              DS BX MOV.                 \ restore DS from BX
+              BX POP.                    \ clear the FORTH stack
+END-CODE
+
+\ hi-level FORTH
+: FTYPEL    ( seg,adr,len -- )
+     >R LISTS @ -ROT R>                  \ move adr of LISTS under parameters
+     DUP OUT+                            \ update OUT
+     CRT-BASE  CURSOR@ SWAP SCR-WIDTH * + 2*  \ CALC. vid. ram addr of cursor
+     PAGE#@ PAGE-SIZE * +                \  CALC. the page address + above Addr
+     WATRC <FTYPEL> ;                    \ get the attribute val. & GO
+     
+: F$.L   ( seg, $addr -- )  COUNT FTYPEL ;
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,23 @@
+\ Information screen for re-building HSF2012.EXE
+PAGE
+CR ." ===================================================================="
+CR ."      This project was created by Brian Fox, Canada Apr 2008"
+CR
+CR ."         IN MEMORY OF JAMES T. CALLAHAN, SPRINGBORO OHIO"
+CR ."                    CREATOR OF HS/FORTH"
+CR ."         TAKEN FROM US TOO SOON AT THE AGE OF 61"
+CR
+CR ."        Rest in peace and thanks for all the code Jim"
+CR ." ==================================================================="
+
+CR ."             *** HSFORTH TO HSF2012  RE-BUILD ***"
+CR
+CR ." You have chosen to load the source files to re-build HSF2012.EXE"
+CR
+CR ." - All SOURCE files must be in path: LIB\"
+CR ." - This HSFORTH kernel is set to   : " PATH0 $.
+CR
+CR ." Press enter to continue, any other key will halt > "
+
+KEY  13 <> ?( CR CR ." === BUILD TERMINATED BY USER ===" ABORT )
+

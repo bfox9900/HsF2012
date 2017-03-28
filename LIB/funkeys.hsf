@@ -1,0 +1,24 @@
+\ FUNKEYS    inline assignment of function keys  13JUL91 Fox
+HEX
+
+: HOTKEY!  ( xkey# -- )
+       ['] ' 2+ KEY-CLASS  ROT  1+ 2* I! ;
+
+: F1=   4D HOTKEY! ;
+: F2=   4E HOTKEY! ;
+: F3=   4F HOTKEY! ;
+: F4=   50 HOTKEY! ;
+: F5=   51 HOTKEY! ;
+: F6=   52 HOTKEY! ;
+: F7=   53 HOTKEY! ;
+: F8=   54 HOTKEY! ;
+: F9=   55 HOTKEY! ;
+: F10=  56 HOTKEY! ;
+: PGUP= 5B HOTKEY! ;
+: PGDN= 63 HOTKEY! ;
+
+DECIMAL
+
+EXIT
+
+

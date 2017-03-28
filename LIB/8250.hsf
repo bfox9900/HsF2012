@@ -1,0 +1,110 @@
+\  8250 Comunication parameter control   24NOV88  FOX
+\  updated for HsForth 2000 Mar 2005
+\  replaced SAL with LSHIFT (ISO Forth)  May 2015  BJF
+
+
+\  Warning:  Code is for DOS only.  Windows 7 seems to break it
+
+
+FORTH DEFINITIONS
+
+HEX
+
+3 value maxcom#
+
+0 constant rx/tx
+1 constant int-en       \ interrupt enable
+2 constant int-id       \ interrupt id
+3 constant ln-ctl       \ line ctrl
+4 constant mdm-ctl      \ modem ctrl
+5 constant ln-st        \ line status
+6 constant mdm-st       \ modem status
+
+0040 CONSTANT bios_seg
+
+1C200. 2constant magic#    \ divide magic# by bits per second to get divisor for 8250
+
+2 BASE !
+  11100111 constant par_mask
+  11111011 constant stop_mask
+  11111100 constant bits_mask
+
+\ create lookup array for 16 com port I/O addresses
+HEX
+ 0F 1var ]com_base
+
+: ?COM#  ( uart-adr n -- n )
+         dup 0 maxcom# within? not abort" invalid COM#"
+         over 0= abort" no address assigned" ;
+
+: ]COM_BASE!  ( adr COM# -- )
+           ?COM#  TO ]COM_BASE ;
+
+\ Initialize the port addresses for 4 serial ports. use the BIOS info
+: getcomports ( -- )
+        bios_seg 00 @l  0 ]com_base!
+        bios_seg 02 @l  1 ]com_base!
+        bios_seg 04 @l  2 ]com_base!     \ for use in at computers only!
+        bios_seg 06 @l  3 ]com_base! ;
+
+getcomports
+
+\ : UART  ( n -- )  COM# ]COM_BASE + ;  ( select an 8250 UART )
+
+: UART    ( reg -- portadr) COM# ]COM_BASE + ;
+: UART@   ( reg -- portadr) COM# ]COM_BASE + PC@ ;
+: UART!   ( c -- )          COM# ]COM_BASE + PC! ;
+
+: BAUD!   ( n -- )                  ( store baud rate divisor )
+        LN-CTL UART@ DUP>R
+        80 OR LN-CTL UART!
+        SPLIT ( c, c )
+        1 UART!
+        0 UART!
+        R> LN-CTL UART! ;
+
+: LN-CTL! ( c,mask-byte -- )
+            LN-CTL UART@ AND OR  LN-CTL UART! ;
+
+\ Hi level definitions
+DECIMAL
+: BAUD   ( n -- )
+         MAGIC# ROT U/MOD NIP
+         DUP  0 1047 WITHIN? NOT ABORT" Invalid baud rate"
+         BAUD! ;
+
+HEX
+: STOP-BITS ( n -- )
+            1- DUP 0 1 WITHIN? NOT ABORT" 1 or 2 allowed"
+            2 LSHIFT STOP_MASK LN-CTL! ;
+
+SYNONYM STOP-BIT  STOP-BITS
+
+\ These constants are used by the word "PARITY"
+        0 CONSTANT NO
+        1 CONSTANT ODD
+        3 CONSTANT EVEN
+
+: PARITY   DUP 0 3 WITHIN? NOT ABORT" Bad parity type"
+           3 LSHIFT PAR_MASK LN-CTL! ;
+
+HEX
+: BITS ( c -- )
+       5 -  DUP 0 3 WITHIN? NOT ABORT" Bad bit count!"
+       BITS_MASK LN-CTL! ;
+
+: COM1:  0 TO COM# ;
+: COM2:  1 TO COM# ;
+: COM3:  2 TO COM# ;
+: COM4:  3 TO COM# ;
+
+DECIMAL
+EXIT
+
+\ examples of use of 8250 control words:
+COM1:    300 baud   odd parity  7 bits  1 stop-bits
+COM2:   1200 baud  even parity  7 bits  1 stop-bits
+COM3:  19200 baud    no parity  8 bits  2 stop-bits
+COM4:  38400 baud    no parity  8 bits  1 stop-bits
+
+

@@ -1,0 +1,33 @@
+\ GUILLOTINE: A device used in the past to behead criminals
+
+\ or a program to create a behead file of words that can be selectivly edited
+\ after the fact, then FLOADed and BEHEAD all the words you DON'T want.
+
+\ It will only behead upto the current FENCE value so set it first!
+
+HEX
+DVARIABLE EOV      LISTS @  FENCE @ EOV D!
+
+: GUILLOTINE
+             THE CONTEXT IS CURRENT
+             THE CONTEXT 6I@ @ >R       LATEST
+             CR ." \ List of words to behead"  CR CR
+             BEGIN
+                    R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+\                    >R  DDUP  EOV D@ D< ABORT" END OF WORDS"
+                    ." BEHEAD' " TYPEL  CR
+                    3 - DUP  1+ 0=
+             UNTIL  DROP RDROP ;
+
+DECIMAL
+EXIT
+
+                    R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+                    DUP THE OUT + WWIDTH 3 - >
+                    IF CR THEN  TYPEL  \ Fox mod.
+                    3 - DUP  1+ 0=
+
+
+
+
+

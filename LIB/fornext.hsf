@@ -1,0 +1,57 @@
+\ FOR NEXT  loops  ...................................................
+
+\ 30% faster than do..loop upto 32k loops; compatible with eForth (?)
+\ EMPTY loop is 2 TIMES FASTER than "do  1 /loop"  for 64K loops
+
+\ uses usigned int. CountS down from 65536 to 0
+
+
+\ LOL!!  this is the same code as >R  DUH!
+\ CODE  <for>
+\         bp inc.
+\         bp inc.
+\        [BP] BX mov.
+\         BX pop.
+\         next.
+\ end-code
+
+CODE  <next>
+        [bp] 1 IW SUB.                  \ decr top of R-stack
+        jnz jmpb                        \ if not 0 jump back
+        bp dec. bp dec.                 \ drop the R-stack
+        si inc. si inc.                 \ got to the next Forth Instruction
+        next.
+
+@@ jmpb si [si]   add.
+        next.
+end-code
+
+: (next)      R> 1- DUP >R 0BRANCH <resolve r> drop ;
+
+
+: for       ( n -- ) ?comp  POSTPONE >R <mark 67 ;   immediate
+: next2     ( -- )   67 ?pairs  POSTPONE (next) <resolve ; IMMEDIATE
+: NEXT      ( -- )   67 ?pairs  POSTPONE <next> <resolve ; IMMEDIATE
+
+: test  100 for next ;
+: test2 100 for next2 ;
+
+
+-1 [IF]
+\ test code with timings
+hex
+
+: 32KTEST  TICK  7FFF   FOR NEXT TOCK U. ;   \  90 us
+: 32KDO    TICK  7FFE 0 DO  LOOP TOCK U. ;   \ 129 us
+: 32K+DO   TICK  7FFE 0 DO    1 +LOOP  TOCK U. ;
+
+: 64KTEST  TICK  FFFF   FOR   NEXT     TOCK U. ;    \ 212 us
+: 64KDOU   TICK  FFFF 0 DO    1 /LOOP  TOCK U. ;    \ 456 us
+: 64K+DO   TICK  FFFF 0 DO    1 +LOOP  TOCK U. ;
+
+decimal
+
+[THEN]
+
+
+

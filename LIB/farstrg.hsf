@@ -1,0 +1,81 @@
+\  Far segment string array
+
+
+\ Creates a FAR segment of memory that can contain one or many ARRAYs of Pascal style counted strings
+\ We will not normally deal with the strings in the segment directly
+\ goal to be easy to access the strings with an index.  Fixed size, fast and cheap.
+\ Fetching should move a FAR string down to PAD so it can be processed.
+\ Or it could be pushed onto the HSF2000 string stack
+
+Forth definitions
+
+
+decimal
+\ access the Hs/Forth segment data structure with these words
+: used]     ( segment -- adr )      2 cells+  ;
+: size]     ( segment -- adr )      cell+  ;
+: para]     ( segment -- adr )             ;
+: segndx]   ( segment -- adr )      10 +  ;
+
+
+: FAR-string-array: ( segment stringsize quantity -- )
+  create
+         3dup * allotl                   \ allotl will check if there is enough space in the segment and Abort if not
+         rot   @ ,                       \ paragragh adr
+         swap
+         ( size) ,                       \ size
+         ( qty)  ,                       \ could be used for error checking in the future... ya right!
+
+   does>  ( ndx  -- seg offset ) \ returns a Far string seg and pointer/address combination
+           dup@  >R     \ copy the segment adr to r stack
+           cell+  @     \ fetch the string length ( ndx size)
+            *           \ multiply ndx*size to get the offset
+           r> swap ;    \ pull the segment back onto stack
+
+: FARsizeof ( -- n ) '   dup 4i@  swap 6i@ * ;  IMMEDIATE       \ return calculated the size of the array
+
+: get$l    ( seg addr -- top$)     \ read FAR string onto string stack.
+            NEW.TOP$               \ make space on $stack
+            TOP$ $@l ;             \ Now the FAR memory string is in local Forth memory (LISTS segment)
+
+0 [if]
+\ test code **************************************************************
+\ test segment.  create one in your program like this
+
+hex  1FFF segment [$seg
+
+DECIMAL
+\ then allocate space in the segment by creating far-string-array
+[$seg 32 200 far-string-array: ]Q
+
+
+c" This is a string 0" 0 ]Q $!L              \ string assignment like this.
+c" This is a string 1" 1 ]Q $!L
+
+1 ]Q GET$L
+
+
+
+\ top$ $.
+
+\ how to work with the string segment header
+cr
+cr ." FAR STRING segment stats"
+cr ." Para address:" [$seg para] ?                                \ paragraph address
+cr ." Segment size:" [$seg size] ?                                \ size of segment
+cr ." Bytes used  :" [$seg used] ?                                \ bytes used in segment
+cr ." Next byte   :" [$seg segndx] ?                              \ pointer to next available free memory in segment
+cr
+
+50 $variable x$   x$ :=" I hope this works "
+
+: .q    ]Q $.l ;
+
+: loadq   100 0
+          do
+               x$  i str$ +$   i ]Q $!l clrssp
+          loop ;
+
+: .qs   100 0 do i ]q $.l cr loop ;
+
+[then]

@@ -1,0 +1,771 @@
+\ 8088ASM.hsf  altered to look a little more like other Forth assemblers. Fox
+\ 8088ASM  COPYRIGHT 1983 HARVARD SOFTWORKS )
+
+\ added support for 386 FS and GS segment registers
+\ increased size of jump table for so this assembler will work with TINY compiler output file OCt 5 2014
+\ replaced all HEX 20 literals with BL (space constant) ANDDDD... then I put them back cuz something broke ???!!!
+
+\ Cludged in 386 "SETcc BL" opcodes for use with Tiny compiler
+
+HEX 09FF TO SEG-SIZE
+
+: SAVE-BIN
+        THE ASMSEG CODES -
+        IF THE ASMSEG  BL WORD PUT-FILE
+        ELSE ." Set ASMSEG "
+        THEN ;
+
+: SAVE-COM
+        10 THE ASMSEG +!
+        -100 THE ASMSEG 4+ +! SAVE-BIN
+        -10 THE ASMSEG +!
+        100 THE ASMSEG 4+ +! ;
+
+FIND PERMANENT ?( HERE-L   PERMANENT )
+
+VOCABULARY ASSEMBLER IMVOC        ' FORTH ' ASSEMBLER 2I!    \ for VOCAB83
+
+FIND PERMANENT ?( LOAD-HIGH =  ?( TRANSIENT ) )
+
+ONLY FORTH ALSO ASSEMBLER DEFINITIONS
+
+CREATE ASM_ERR_MSG
+    ," "
+    ," too many ARGS"                   \ 1
+    ," Cannot do BYTE,WORD"             \ 2
+    ," Cannot do MEM,MEM"               \ 3
+    ," Cannot do SREG,SREG"             \ 4
+    ," Argument cannot be immediate"    \ 5
+    ," Segment Register"                \ 6
+    ," IB (byte) or IW (word) expected" \ 7
+    ," destination=Code Segment"        \ 8
+    ," Missing destination"             \ 9
+    ," Missing source"                  \ A
+    ," 2 operands"                      \ B
+    ," operand?"                        \ C
+    ," BYTE"                            \ d
+    ," COUNT ?"                         \ e
+    ," # too large for a byte"          \ f
+    ," Not the Accumulator"             \ 10
+    ," Jump too far"                    \ 11
+    ," Jump table full"                 \ 12
+    ," Duplicate label"                 \ 13
+    ," Opcode exceeds 6 bits for ESC."  \ 14
+    ," Unknown Assembler error"         \ 15
+    ," "                                \ null
+
+: ]ASMERR   ( ? n -- )
+        SWAP 0 <>
+        IF
+           CR
+           CR ." ** ASSEMBLER ERROR #" DUP . ." **"
+           CR ASM_ERR_MSG .NTH$
+           CR FORTH TRUE ABORT" "
+        ELSE DROP
+        THEN ;
+
+: ?-MEM  6000 AND     0= ;
+
+: ?+MEM
+        DUP E000 AND 8000 =
+        IF DROP 1
+        ELSE 0600 =
+            IF 2
+            ELSE 0
+            THEN
+        THEN ;
+
+
+: ?-BYTE        C008 AND C000 = ;
+: ?-WORD        C008 AND C008 = ;
+: ?-IB          E000 = ;
+: ?-IW          E00F = ;
+: ?-REG         C000 AND C000 = ;
+: ?-SREG        E00C AND E008 = ;
+: ?-ACC         E707 AND C000 = ;
+
+VARIABLE #BYTES
+
+VARIABLE SRCI FFFF SRCI !    VARIABLE DSTI  FFFF DSTI !
+VARIABLE SRC  FFFF SRC  !    VARIABLE DST   FFFF DST  !
+VARIABLE IMMED   IMMED 0!    VARIABLE DISP    DISP   0!
+VARIABLE IMM-V               VARIABLE OFST-V
+
+: IB-SET    IMM-V !     1 IMMED ! ;
+: IW-SET    IMM-V !     2 IMMED ! ;
+
+: ARG-RESET  ( -- )
+         -1 SRCI !
+         -1 DSTI ! ;
+
+: ARG-INIT  ( -- )
+        #BYTES OFF
+        DISP   OFF
+        OFST-V OFF
+        IMM-V  OFF
+        IMMED  OFF
+        ARG-RESET ;
+
+FORTH DEFINITIONS
+
+VARIABLE (CONTEXT)          \ temp storage for context vocabulary
+
+1FF CONSTANT JMP-LIM         \ size of the jump table for labels
+
+\ create the jump table used for labels
+
+VARIABLE JMP-TAB  JMP-LIM ALLOT  JMP-TAB JMP-LIM 20 FILL   JMP-TAB OFF   \ create and clear the jump table
+
+
+: (CODE)    ( -- )                  \ changed to clear the jump table automatically
+            CONTEXT (CONTEXT) @&!
+            JMP-TAB OFF
+            [COMPILE] ASSEMBLER ;
+
+:  CODE  (CODE)            CODE [ ASSEMBLER ] ARG-INIT ;
+
+: ,CODE  (CODE)           ,CODE [ ASSEMBLER ] ARG-INIT ;
+
+: ;CODE  (CODE) [COMPILE] ;CODE [ ASSEMBLER ] ARG-INIT ;
+         IMMEDIATE
+
+: +CODE  (CODE)           +CODE [ ASSEMBLER ] ARG-INIT ;
+
+:  [%    (CODE) [COMPILE] [%    [ ASSEMBLER ] ARG-INIT ;  IMMEDIATE
+
+
+\ ******************************** WARNING **********************************
+\ you MUST now always end code definitions with the MACRO NEXT. to get back
+\ to Forth.  This way you can write pure assembler if you want.
+
+: END-CODE
+            (CONTEXT) CONTEXT @&! ( END-CODE ) \ <-- BIG CHANGE IS HERE!
+            ?CSP ;
+
+\ ****************************************************************************
+
+ONLY FORTH ALSO ASSEMBLER DEFINITIONS
+: ARG
+        CREATE ,
+        DOES> @     
+        
+        DSTI @ 1+
+        IF SRCI @ 1+
+                IF ARG-INIT  1 ]ASMERR  THEN     \  ," too many ARGS"                   \ 1
+
+                DUP ?-WORD DSTI @ ?-WORD XOR
+                IF DUP ?-REG DSTI @ ?-REG  AND
+                  IF ARG-INIT  2 ]ASMERR          \ ," Cannot do BYTE,WORD"             \ 2
+                  THEN
+                THEN
+
+                DUP ?-MEM  DSTI @ ?-MEM  AND
+                IF ARG-INIT 3 ]ASMERR             \ ," Cannot do MEM,MEM"               \ 3
+                THEN
+
+                DUP ?-SREG DSTI @ ?-SREG AND
+                IF ARG-INIT  4 ]ASMERR            \  ," Cannot do SREG,SREG"            \ 4
+                THEN
+
+                DUP SRCI ! ?-IB
+                IF IB-SET THEN
+                SRCI @ ?-IW
+                IF IW-SET
+                THEN    SRCI @ ?+MEM DUP
+                        IF  DISP   ! OFST-V !
+                        ELSE DROP
+                        THEN
+        ELSE ARG-INIT
+             DUP DUP  ?-IB SWAP ?-IW OR
+             IF ARG-INIT  5 ]ASMERR               \  ," Argument cannot be immediate"    \ 5
+             THEN  DUP DSTI ! ?+MEM DUP
+                   IF  DISP   ! OFST-V !
+                   ELSE DROP
+                   THEN
+        THEN ;
+
+\ register definitions       Forth Virtual machine Synonyms
+C008 ARG AX
+C109 ARG CX
+C20A ARG DX
+C30B ARG BX               \   synonym TOS  BX
+
+E008 ARG ES
+E109 ARG CS
+E20A ARG SS
+E30B ARG DS
+
+\ 386 registers
+E40C ARG FS
+E50D ARG GS
+
+C40C ARG SP               \  synonym STACK   SP
+C50D ARG BP               \  synonym RSTACK  BP
+C60E ARG SI               \  synonym IP      SI
+C70F ARG DI               \  synonym W       DI
+
+C000 ARG AL
+C101 ARG CL
+C202 ARG DL
+C303 ARG BL
+
+C404 ARG AH
+C505 ARG CH
+C606 ARG DH
+C707 ARG BH
+
+
+\ addressing modes
+0000 ARG [BX+SI]
+0100 ARG [BX+DI]
+0200 ARG [BP+SI]
+0300 ARG [BP+DI]
+
+0400 ARG [SI]
+0500 ARG [DI]
+0600 ARG +[]
+0700 ARG [BX]
+
+8000 ARG +[BX+SI]
+8100 ARG +[BX+DI]
+8200 ARG +[BP+SI]
+8300 ARG +[BP+DI]
+
+8400 ARG +[SI]
+8500 ARG +[DI]
+8600 ARG +[BP]
+8700 ARG +[BX]
+
+E00F ARG IW   \ immediate word is like a reg
+E000 ARG IB   \ immedidate byte is like a reg
+
+
+: [BP]          0 +[BP] ;       \ this is useful
+
+\
+: CHS       SRCI @ ?-SREG DSTI @ ?-SREG OR
+            IF ARG-INIT 1  6 ]ASMERR THEN ;
+
+: ARG-SET   SRCI SRC @&!  DSTI DST @&!  ARG-RESET  ;
+
+: INIT2     ARG-SET
+            SRC @ DST @ OR FFFF =  7 ]ASMERR
+            SRC @ ?-WORD DST @ ?-WORD OR
+            IF    1+  THEN ;
+
+: CMDOUT ( opcode -- ) ( #BYTES=0 -> 1 BYTE )
+         DISP @ 1 =
+         IF  OFST-V @ FF80 AND DUP 0= SWAP FF80 = OR
+             IF 3FFF AND 4000 OR
+             ELSE DISP   1+!
+             THEN
+         THEN
+
+         #BYTES  @
+         IF W%   ELSE C%    THEN
+
+         OFST-V  @ DISP   @ DUP
+         IF 1- IF W%    ELSE C%   THEN
+         ELSE 2DROP
+         THEN
+
+         IMM-V  @ IMMED  @ DUP
+         IF 1-
+             IF W%
+             ELSE C%
+             THEN
+
+          ELSE 2DROP
+          THEN   ;
+
+
+: RM-MERGE    FF00 AND SWAP 00FF AND OR ;
+
+: REG-MID     0700 AND 8*   OR ;
+
+: ACC-IM-ARL  4 OR   ;
+
+: RM-IM-ARL  3801 AND 0080 OR  DST @   FF00 AND  OR  #BYTES 1+! ;
+                                                            ( opcode src -- )
+:  RM-RM-ARL
+        DUP ?-MEM
+        IF    RM-MERGE 2 OR   DST @
+        ELSE  SWAP DST @ RM-MERGE SWAP
+        THEN  REG-MID #BYTES 1+! ;
+
+
+: IMM-ARL
+        DROP  DST @ ?-ACC
+        IF ACC-IM-ARL
+        ELSE RM-IM-ARL
+        THEN ;
+
+: ARL-2OP   ( opcode -- )
+      SRC @ DUP ?-IW  OVER ?-IB  OR
+      IF IMM-ARL
+      ELSE RM-RM-ARL
+      THEN ;
+
+: TEST2OP
+        INIT2 ARL-2OP IMMED  @
+        IF  #BYTES @
+             IF    C701 AND 00F6 OR
+             ELSE     1 AND   A8 OR
+             THEN
+        ELSE  FFFD AND
+        THEN  CMDOUT ;
+
+
+: XCHG2OP  INIT2 SRC @ DUP C008 =    DST @ C008 = OR
+           SRC @ ?-MEM NOT AND DST @ ?-MEM NOT AND
+           IF
+                C008 =
+                IF DROP DST @
+                ELSE DROP SRC @
+                THEN 7 AND 90 OR
+           ELSE  RM-RM-ARL 2 OR
+           THEN CMDOUT ;
+
+: R-IM-MOV    DROP           DST @  0F AND B0 OR ;
+: M-IM-MOV    1 AND 00C6 OR  DST @            OR  #BYTES 1+! ;
+
+: IMM-MOV
+            DROP DST @  DUP ?-SREG 6 ]ASMERR
+            ?-REG
+            IF R-IM-MOV
+            ELSE M-IM-MOV
+            THEN ;
+
+: SR-RM-MOV
+            DUP ?-SREG
+            IF   NIP 008C SWAP
+            ELSE
+                2DROP DST @ DUP E109  =
+                if cr ." Warning: destination=CS" then             \  8 ]asmerr
+                SRC DST @&! 008E SWAP
+             THEN ;
+
+: MOV-2OP
+        SRC @ DUP ?-IW OVER ?-IB OR
+        IF   IMM-MOV
+        ELSE
+                DUP ?-SREG  DST @  ?-SREG OR
+                IF  SR-RM-MOV
+                THEN   RM-RM-ARL
+        THEN ;
+
+: MOV2OP    INIT2 MOV-2OP       CMDOUT ;
+
+: ARL2OP
+        CREATE ,
+        DOES>  @  CHS   INIT2 ARL-2OP CMDOUT ;
+
+
+\ operations defined
+0000 ARL2OP ADD.
+0808 ARL2OP OR.
+1010 ARL2OP ADC.
+1818 ARL2OP SBB.
+2020 ARL2OP AND.
+2828 ARL2OP SUB.
+3030 ARL2OP XOR.
+3838 ARL2OP CMP.
+
+: TEST.         CHS 0084 TEST2OP ;
+: XCHG.         CHS 8086 XCHG2OP ;
+: MOV.          0088 MOV2OP ;
+
+: LXX
+        CREATE ,
+        DOES> @
+              CHS ARG-SET DST @ ?-WORD NOT
+              IF ARG-INIT TRUE 9 ]ASMERR   THEN
+
+              SRC @ ?-MEM  NOT
+              IF ARG-INIT TRUE 0A ]ASMERR
+              THEN  SRC @  RM-MERGE  DST @  REG-MID  #BYTES 1+!  CMDOUT ;
+
+
+008D LXX LEA.
+00C5 LXX LDS.
+00C4 LXX LES.
+
+\
+: REG-END SWAP 7 AND OR ;
+
+: INIT1
+        ARG-SET  SRC @   1+     0B ]ASMERR
+        DST @ DUP FFFF =  12 ]ASMERR
+        DUP ?-MEM
+        IF
+                DUP 2 AND 0=  2 ]ASMERR
+        THEN ;
+
+: IN1S    INIT1  CHS ;
+
+: CH-PTR   DSTI @ ?-MEM NOT  IF ARG-INIT TRUE 0C ]ASMERR THEN ;
+
+: WORD-PTR
+        CH-PTR  DSTI @ 3 OR DSTI ! ;
+
+: BYTE-PTR
+        CH-PTR DSTI @ 2 OR DSTI ! ;
+
+: INPOP
+            DSTI @ ?-MEM IF WORD-PTR THEN
+            INIT1  DUP ?-BYTE  0E ]ASMERR ;
+
+        (  AX POP.        CS PUSH.      [BX+SI] POP.   word only  )
+
+: POP.    INPOP DUP ?-SREG      IF DUP E109 = 08 ]ASMERR
+                                   7 AND 8* 7 OR
+                                ELSE   DUP  ?-REG
+          IF    58 REG-END      ELSE   8F OR  #BYTES 1+! THEN THEN CMDOUT ;
+
+: PUSH.   INPOP DUP ?-SREG      IF      7 AND 8* 6 OR  ELSE DUP  ?-REG
+          IF    50 REG-END      ELSE 30FF OR  #BYTES 1+! THEN THEN CMDOUT ;
+
+: REG-MERGE   DUP ?-WORD  IF SWAP 1 OR SWAP THEN  FF00 AND OR ;
+  (   AX INC.    [SI] BYTE-PTR DEC.       )
+
+: INCDEC   DUP ?-MEM  IF OR  ELSE REG-MERGE THEN  #BYTES 1+!  ;
+
+: INC.
+            00FE IN1S  DUP ?-WORD
+            IF NIP 40 REG-END
+            ELSE INCDEC
+            THEN CMDOUT ;
+
+: DEC.
+            08FE IN1S  DUP ?-WORD
+            IF NIP 48 REG-END
+            ELSE INCDEC
+            THEN CMDOUT ;
+
+\
+: ARL-1OP
+            DUP ?-MEM
+            IF OR
+            ELSE REG-MERGE
+            THEN #BYTES 1+!  CMDOUT ;
+
+: ARL1OP
+            IN1S  0FFFD AND
+            DUP ?-WORD IF 1 OR THEN   ARL-1OP ;
+
+: ARL1OPS
+    CREATE ,
+    DOES> @ ARL1OP ;
+
+
+: SHIFTER
+        CREATE ,
+        DOES> @
+              SWAP  1-
+              DUP FFF0 AND ABORT" can only shift 16 bits"    \ changed error message from 0F ]asmerr
+              0>
+              IF 0002 OR
+              THEN  ARL1OP ;
+
+
+(  AX NOT.   +[] WORD-PTR IMUL.      AX 1 ROL.   [BX] WORD-PTR 5 SHR.  )
+
+10F6  ARL1OPS NOT.         00D0 SHIFTER ROL.
+18F6  ARL1OPS NEG.         08D0 SHIFTER ROR.
+20F6  ARL1OPS MUL.         10D0 SHIFTER RCL.
+28F6  ARL1OPS IMUL.        18D0 SHIFTER RCR.
+30F6  ARL1OPS DIV.         20D0 SHIFTER SHL.
+38F6  ARL1OPS IDIV.        28D0 SHIFTER SHR.
+                           38D0 SHIFTER SAR.
+
+\ Jim did not allow shift by CX instructions. This is a bandaid.
+: BX,CL_SHL.   D3 C% E3 C% ;
+: BX,CL_SAR.   D3 C% EB C% ;
+
+: INIT0
+            ARG-SET ARG-INIT DST @ SRC @ AND 1+  0C ]ASMERR  ;
+
+: CMD0   CREATE ,   DOES> @ INIT0  CMDOUT ;
+
+: ES:       0026 C%  ;
+: CS:       002E C%  ;
+: SS:       0036 C%  ;
+: DS:       003E C%  ;
+: FS:       0064 c%  ;
+: GS:       0065 C%  ;
+
+
+  009D CMD0 POPF.
+  009C CMD0 PUSHF.
+
+: CALL.   ARG-INIT HERE-C 3 + -        IW-SET  00E8   CMDOUT ;
+
+: CALLF.  ARG-INIT 2 DISP   ! OFST-V ! IW-SET  009A   CMDOUT ;
+
+: INDIRECT
+        CREATE ,
+        DOES> @ DSTI @ ?-MEM
+        IF WORD-PTR THEN   ARL1OP ;
+
+10FF INDIRECT CALLI.
+18FF INDIRECT CALLFI.
+
+: JMPF.   ARG-INIT 2 DISP   ! OFST-V ! IW-SET  00EA   CMDOUT ;
+
+20FF INDIRECT JMPI.
+
+28FF INDIRECT JMPFI.
+
+: @@NEAR              HERE-C    CONSTANT  ;
+
+: @@FAR  ASMSEG @  @  HERE-C    LABEL-FAR ;
+
+
+037 CMD0 AAA.
+027 CMD0 DAA.
+
+: AAD.  INIT0  0AD5 #BYTES 1+! CMDOUT ;
+
+03F CMD0 AAS.
+02F CMD0 DAS.
+
+: AAM.  INIT0  0AD4 #BYTES 1+! CMDOUT ;
+
+098 CMD0 CBW.
+099 CMD0 CWD.
+0F8 CMD0 CLC.
+0FC CMD0 CLD.
+0FA CMD0 CLI.
+0F5 CMD0 CMC.
+0F9 CMD0 STC.
+0FD CMD0 STD.
+0FB CMD0 STI.
+
+: ESC.
+            DSTI @ ?-MEM IF BYTE-PTR THEN
+            DUP   FFC0 AND 15 ]ASMERR
+            DUP 7 AND 800 * SWAP 38 AND 8/ OR  D8  OR IN1S
+            FFFC AND  ARL-1OP ;
+
+0F4 CMD0 HLT.
+0F0 CMD0 LOCK:
+
+: LIM-BYTE  DUP FF00 AND 10 ]ASMERR ;
+
+: CMDIO
+            ARG-SET DST @ DUP ?-ACC NOT 011 ]ASMERR
+            ?-WORD IF 1+ THEN CMDOUT ;
+
+: IN.       LIM-BYTE IB-SET 00E4 CMDIO ;
+: OUT.      LIM-BYTE IB-SET 00E6 CMDIO  ;
+
+: IN-DX.    00EC CMDIO ;
+: OUT-DX.   00EE CMDIO  ;
+
+: INT.
+        INIT0
+        LIM-BYTE DUP 3 =
+        IF 00CC
+        ELSE 100 * 00CD OR #BYTES 1+!
+        THEN CMDOUT ;
+
+00CE CMD0 INTO.
+009F CMD0 LAHF.       009E CMD0 SAHF.
+
+00A6 CMD0 CMPSB.
+00A7 CMD0 CMPSW.
+
+00AC CMD0 LODSB.
+00AD CMD0 LODSW.
+00A4 CMD0 MOVSB.
+00A5 CMD0 MOVSW.
+
+0090 CMD0 NOP.
+
+00F3 CMD0 REPZ:
+00F3 CMD0 REPE:
+00F2 CMD0 REP:
+00F2 CMD0 REPNZ:
+00F2 CMD0 REPNE:
+
+00C3 CMD0 RET.            : RET+.    INIT0 IW-SET  00C2 CMDOUT ;
+00CB CMD0 RETF.           : RETF+.   INIT0 IW-SET  00CA CMDOUT ;
+00CF CMD0 IRET.
+
+00AE CMD0 SCASB.
+00AF CMD0 SCASW.
+00AA CMD0 STOSB.
+00AB CMD0 STOSW.
+
+009B CMD0 WAIT.
+00D7 CMD0 XLAT.
+\
+
+
+: JMP-LOC
+            DUPC@ 07F AND  1+ + ;
+
+: JMP-NXT  ( #at  a#c --  #at a#c )
+           JMP-LOC 2+     SWAP 1+ SWAP ;
+
+: ?JMP-SHORT
+            DUP FF80 AND DUP 0= SWAP FF80 = OR NOT 12 ]ASMERR ;
+
+: ?-MATCH  ( addr#word  #at  a#c  -- addr#word #at a#c  flag )
+           3 PICK  DUP  C@  1+  0
+           DO
+                2DUP I + C@ SWAP I + C@ 7F AND -
+                IF LEAVE DROP 0
+                THEN
+          LOOP  ;
+
+: JMP-FIND ( addr#word #at a#c  --  addr#word #at a#c flag  )
+           BEGIN
+                OVER JMP-TAB  @ <
+                IF  ?-MATCH
+                    IF  -1 -1
+                    ELSE JMP-NXT 0
+                    THEN
+                ELSE  0 -1
+                THEN
+           UNTIL  ;
+
+
+: CH-TAB   ( addr#word #at a#c -- addr#word a#c lng addr#word )
+           SWAP DROP  2DUP JMP-TAB -
+           OVER C@ + 4+    JMP-LIM > 13 ]ASMERR DUPC@ SWAP ;
+
+: JMP-B/W
+            1 IMMED ! DUP  00E9 =   OVER 00E8 =  OR
+            IF   IMM-V 1-!  IMMED 1+!
+            ELSE IMM-V @ ?JMP-SHORT DROP
+            THEN ;
+
+
+\
+: JMP-ENTER ( jcode addr#word  #at a#c -- jcode )
+           CH-TAB     OVER 80 OR SWAP  C!
+           1+ 2DUP +  HERE-C 1+ SWAP !  CMOVE
+           JMP-TAB 1+!
+           JMP-B/W ;
+
+: JMP-NOW
+        NIP  JMP-LOC @ HERE-C 2+ - IMM-V ! DROP
+        JMP-B/W ;
+
+: JUMPER   ( jcode  --  )
+        CREATE ,
+        DOES> @
+           INIT0  20 WORD   0  JMP-TAB 2+
+           BEGIN
+             JMP-FIND
+             IF DUPC@ 80 AND
+                  IF JMP-NXT 0
+                  ELSE JMP-NOW -1
+                  THEN
+            ELSE  JMP-ENTER -1
+            THEN
+           UNTIL
+           CMDOUT ;
+
+
+: JMP-FIX  ( addr#word #at a#c -- addr#word #at a#c )
+           INIT0 DUP JMP-LOC  @       HERE-C OVER- 1-   IMM-V !
+           THE ASMSEG @ OVER 1- C@L    JMP-B/W
+           DROP   IMM-V @  THE ASMSEG @ ROT  IMMED @ 1- IF !L ELSE C!L THEN ;
+
+: JMP-DROP DUP JMP-LOC 2+  2DUP    JMP-TAB JMP-LIM + - NEGATE  CMOVE
+           JMP-TAB 1-!     2DROP  0 JMP-TAB 2+ ;
+
+: >>>-ENTER ( addr#word #at a#c -- )
+           CH-TAB DROP   1+ 2DUP +  HERE-C SWAP !  CMOVE   JMP-TAB 1+!  ;
+
+\ jump label creater symbol.  Changed from HSForth '>>>'
+: @@
+        INIT0  20 WORD
+        0 JMP-TAB 2+
+        BEGIN JMP-FIND
+        WHILE
+           DUPC@ 80 AND  NOT 13 ]ASMERR
+           JMP-FIX
+           JMP-DROP
+        REPEAT
+        >>>-ENTER ;
+
+
+\ usage: JMP name   JMPS name     JS name    LOOP name
+077 JUMPER JA       077 JUMPER JNBE    073 JUMPER JAE      073 JUMPER JNB
+072 JUMPER JB       072 JUMPER JNAE    072 JUMPER JC       0E3 JUMPER JCXZ
+076 JUMPER JBE      076 JUMPER JNA     074 JUMPER JE       074 JUMPER JZ
+07F JUMPER JG       07F JUMPER JNLE    07D JUMPER JGE      07D JUMPER JNL
+07C JUMPER JL       07C JUMPER JNGE    07E JUMPER JLE      07E JUMPER JNG
+0E9 JUMPER JMP      0EB JUMPER JMPS    073 JUMPER JNC
+0E8 JUMPER CALL
+075 JUMPER JNE      075 JUMPER JNZ     071 JUMPER JNO      070 JUMPER JO
+07B JUMPER JNP      07B JUMPER JPO     079 JUMPER JNS
+07A JUMPER JP       07A JUMPER JPE     078 JUMPER JS
+0E1 JUMPER LOOPE    0E1 JUMPER LOOPZ   0E2 JUMPER LOOPCX
+0E0 JUMPER LOOPNE   0E0 JUMPER LOOPNZ
+
+\ define some MACROs in our new Assembler **********************************
+
+\ : NEXT.           \ 20% faster on Pentium computers but bigger
+\      AX [SI] mov.
+\      si inc. si inc.
+\      DI AX XCHG.
+\      [DI]  JMPI.  ;
+\
+
+ : NEXT.           \ Optimal on the 8088/80286/80386/80486
+           LODSW.
+      DI AX XCHG.         \ could be faster and smaller if AX was the W register...?
+      [DI]  JMPI.  ;
+
+
+
+: TRANSFER.  ( segdescr - )   \  auto relocating jump to other segment
+        DI DUP IW MOV.
+        DI [DI] MOV.
+        DI PUSH.
+        DI DUP 4I@ IW MOV.
+        DI PUSH.
+        0 RETF+.  TO ASMSEG ;
+
+
+
+\ I added these because I could not grock the assembler well enough to know
+\ how to use the registers ARGs.  (yikes)
+\ crude i386 machine code assembly words  Equivalent to:  SETxx  BL
+\ needed these to build the Crenshaw 'Tiny' compiler
+
+ : sete.bl.     0F c% C394 w% ;
+ : setne.bl.    0F c% C395 w% ;
+ : setg.bl.     0F c% C39F w% ;
+ : setl.bl.     0F c% C39C w% ;
+ : setge.bl.    0F c% C39D w% ;
+ : setle.bl.    0F c% C39E w% ;
+
+\ clean up the words used only to  create the assembler
+BEHEAD'' ?-MEM #BYTES
+BEHEAD'' IMMED ARG-RESET
+BEHEAD' ARG  BEHEAD' INIT2
+BEHEAD'' RM-MERGE ARL2OP
+BEHEAD'' IN1S  CH-PTR
+BEHEAD' CHS
+BEHEAD' REG-END
+BEHEAD'' JMP-LOC >>>-ENTER
+BEHEAD' INPOP
+BEHEAD' REG-MERGE
+BEHEAD' INCDEC
+BEHEAD' ARL1OPS
+BEHEAD' SHIFTER
+BEHEAD' INDIRECT
+BEHEAD' LIM-BYTE
+behead' cmdout
+
+\ ****************** raw assembler ends here ******************************
+
+: CLR-LABELS  ASSEMBLER JMP-TAB OFF ;   \ clear the jump table
+
+FORTH DEFINITIONS
+

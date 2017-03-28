@@ -1,0 +1,54 @@
+\ ANSI control lexicon for terminals like the VT100 etc..
+
+DECIMAL
+FIND ESC    0= ?( 27 CONSTANT ESC )
+
+: .PARM  0 <# DECIMAL #S  #> TYPE ;
+
+: ESC[  ( -- )                                  \ start control sequence
+        ESC     EMIT
+        [CHAR] [ EMIT ;
+
+: CUP   ( row col -- )                          \ cursor up
+        SWAP
+        ESC[
+        ( row)  .PARM
+        [CHAR] ; EMIT
+        ( col)  .PARM
+        [CHAR] H EMIT ;
+                                                \ cursor home
+: CUHOME
+        ESC[
+        [CHAR] F EMIT ;
+
+: CUU   ( row --)                               \ cursor up
+        ESC[
+        .PARM
+        [CHAR] A EMIT ;
+
+: CUD  ( row --)                                \ cursor down
+        ESC[
+        .PARM
+        [CHAR] B EMIT ;
+
+: CUF  ( col --)                                \ cursor forward
+        ESC[
+        .PARM
+        [CHAR] C EMIT ;
+
+: CUB  ( col --)                                \ cursor backward
+        ESC[
+        .PARM
+        [CHAR] D EMIT ;
+
+: ED  ( -- )                                    \ erase display
+        ESC[
+        [CHAR] 2 EMIT
+        [CHAR] J EMIT ;
+
+: EL  ( -- )                                    \ erase line
+        ESC[
+        [CHAR] K EMIT ;
+
+FORTH DEFINITIONS
+
