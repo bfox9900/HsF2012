@@ -1,0 +1,46 @@
+\ String stack test code
+
+decimal
+255 $variable x
+255 $variable y
+255 $variable w
+  2 $variable BL$  BL$ :="  "
+
+x :="                    This is string 'x'                "     \ extra spaces are there for demonstration
+y :=" ABCDEFEGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz"
+
+
+PAGE
+CR ."    **** BF' STRING STACK LIBRARY TESTS *****   "
+CR ." This code should produce the following outputs"
+CR ." Review the file so see the string manipulation code"
+CR
+CR
+."                    This is string 'x'                "  CR
+." ABCDEFEGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz" CR
+                                                           cr
+." abcdefghijklmnopqrstuvwxyz ABCDEFEGHIJKLMNOPQRSTUVWXYZ" cr
+                                                           CR
+." This is string"                                         cr
+." JKLMNOP jklmnop"                                         cr
+
+\  ***** Code Results begin here *****
+cr
+cr
+
+\ just print the strings
+x $.                                                   CR
+y $.                                                   CR
+
+\ Get the upper case part, get the lower case part, swap them, and concatentate
+y 26 left$  y 27 right$ swap +$  $.                    CR
+                                                       CR
+
+\ Show string X with the leading and trailing spaces cleaned off  and print
+x clean$ $.                                            CR
+
+\ take a part of string X add space, take another part of string x, concatenate and print
+y 11 7 mid$  BL$ +$  y  36 7 mid$ +$  $.               CR
+
+CR
+

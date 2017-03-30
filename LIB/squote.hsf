@@ -1,0 +1,33 @@
+\ This is for ANS compatibility
+
+
+        
+: S"    ( <text..> -- $addr len)
+        state @ 0=
+        if                              \ immediate mode
+            [char] " TEXT$ count
+        else                            \ compiling mode
+            compile ,"  ,"
+            compile push$
+            compile count
+        then ;  immediate
+        
+exit
+
+
+: (s")
+      state @
+      if    COMPILE ,"  ,"
+      else
+           new.top$
+          [char] " WORD top$ OVER LEN CHAR+ CMOVE top$
+      then ;  IMMEDIATE
+
+: S"    ( <text..> -- $addr len)
+        state @ 0>
+        if
+            [compile] (s")
+            compile count
+        else
+           [char] " word count
+        then ;  immediate

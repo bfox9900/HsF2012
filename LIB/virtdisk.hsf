@@ -1,0 +1,168 @@
+\ virtdisk.hsf  dynamically allocated virtual memory in far segments
+\ based on fscrnio copyright 1983,1984 harvard softworks
+\ copyright on far segment system b. fox 1991
+
+
+hex
+1 segment dsk-buffers                          \ dummy segment no space alloted
+
+400      value b/buf                           \ bytes/buffer of data space
+b/buf 4+ value <b/buf>                         \ bytes/buffer + update flag
+
+7FFF constant 7FFF                             \ we use this a lot
+
+decimal
+  0 value blockseg                             \ value to select the segment for use
+
+  0 value #buff                                \ no  block buffers at compile time
+ 63 constant maxbuffers
+
+
+\ stuff help manage segment information
+
+variable vhandle  vhandle 0!
+
+hex
+0 constant first
+0 value limit
+
+first value prev
+first value use
+
+variable lowblk   1 lowblk !
+variable highblk  168 highblk !
+
+: init-buffers   ( -- )
+                dsk-buffers to blockseg
+                first       to prev
+                first       to use
+                <b/buf> #buff * dup to limit
+                blockseg 2i@ limit u<           \ compare limit to segment size
+
+                abort" insuffcient space to allocate block buffers"
+                blockseg 4i!  ;                 \ update inuse pointer
+
+init-buffers
+
+\ dynamic buffer allocation ! limits to min 0 max 63 buffers
+: bytes/buffer  ( n -- )  to b/buf ;
+
+: buffers       ( #-of-buffers -- )
+                b/buf 4+ to <b/buf>
+                0 max  maxbuffers min  to #buff
+                #buff <b/buf> * 2+ dsk-buffers move-seg
+                init-buffers ;
+
+
+
+: ?openfile   vhandle @ 0= abort" no data file opened" ;
+
+: r/w-scrnf   ( adr scr#  --  adr seg )
+                 dup highblk @ >
+                 if
+                    ." warning: block# " dup . ."  exceeds file limits" cr
+                    0 max  highblk @ min
+                 then
+                 ?openfile   ( 1- :: to number blocks from 1 )
+                 b/buf u* 2dup vhandle @ lseek
+                 dnegate d+  or abort" record/file-size mismatch in r/w-scrnf"
+                 blockseg @ ;
+
+: rscrnf      ( adr scr#  --  adr )
+                  r/w-scrnf   over b/buf  vhandle @ readh
+                   b/buf -   abort" disk read failed" ;
+
+: wscrnf      ( adr scr#  --      )
+                 r/w-scrnf   swap b/buf vhandle @ writeh
+                 b/buf - abort" disk write failed" ;
+
+: +buf        ( addr1 -- addr2    )
+                 <b/buf> + dup limit =  if drop first then ;
+
+: buffer      ( n --  addr )
+                es@ >r
+                blockseg @ es!
+                use dup>r @e 0<
+                if
+                   r@ 2+ r@ @e 7FFF and wscrnf
+                then
+                r@ !e
+                r@ to prev
+                r@ +buf to use  r> 2+
+                r> es! ;
+
+: blockl ( n - seg addr )
+                 es@ >r
+                 ?openfile
+                 blockseg @ es!
+                 >r
+                 prev dup  @e r@ -  7fff and
+                 if
+                   begin
+                        +buf dup prev =
+                        if   drop r@ buffer  r@ rscrnf 2-
+                        then  dup @e r@ -
+                        7FFF and not
+                   until
+                   dup to prev dup use = if   dup +buf to use   then
+                 then
+                 rdrop 2+  blockseg @ swap
+                 r> es!  ;
+
+
+: bufferl   ( -- seg adr )  blockseg @  swap buffer ;
+
+: empty-buffers
+                 blockseg @  first limit over -  0 filll
+                 blockseg @ es!
+                 #buff 0
+                 do
+                     7FFF <b/buf> i *  first i!e
+                 loop ;
+
+   empty-buffers
+
+:  open-virtmem   (  $" screen.fil" open-screen )
+                 empty-buffers
+                 dup file-size b/buf u/mod highblk ! drop
+                 open-r/w vhandle ! ;
+
+: close-virtmem  vhandle @ ?dup  if closeh  vhandle 0! then ;
+
+:  make-virtmem   ( #screens $" scrn.fil" -- )
+                 over highblk !  mkfile vhandle !
+ ( #screens -- ) blockseg @  first 2+ b/buf 0 filll      \ fill with zeros
+                 1+  1 do   first 2+ i wscrnf    loop
+                 vhandle @ closeh
+                 vhandle off ;
+
+: update   ( -- )
+                 es@ >r
+                 blockseg @ es!
+                 prev @e  8000 or  prev !e
+                 r> es! ;
+
+: save-buffers
+                 es@ >r
+                 first
+                 blockseg @ es!
+                 #buff 0
+                 do  ( buffer-address)
+                     dup @e 0<           \ check if updated
+                     if ( true )         \ then write to disk
+                          dup @e 7fff and over 2dup !e  2+ swap wscrnf
+                     then ( yield )
+                     +buf                \ increment to next buffer
+                 loop
+                 drop
+                 vhandle @ duph closeh
+                 r> es! ;
+
+ synonym flush save-buffers
+
+: clear  ( n -- )  bufferl b/buf 0 filll update ;
+: copy             save-buffers  swap  blockl  2-  !l  update ;
+
+behead' buffer    \ don't want to accidentally use these anymore
+behead' block
+

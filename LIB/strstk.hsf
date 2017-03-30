@@ -1,0 +1,331 @@
+\ strstk.hsf   B. Fox
+\
+
+\ ****************************************************************************
+\ Removed from re-entrant string functions by:
+\         Brian Fox London Ontario Canada
+\         Rev: 15/09/88
+
+\ History
+\ simplified string stack primitives,  Oct 22, 2004 (just for fun. much faster!)
+\ Apr 20 2008 recoded all time critical pieces with inline:  2x speed improvemnt
+\ This file provides the fundamental primitives to implement re-entrant
+\ string words
+\ ***************************************************************************
+
+\ only assembler also Forth definitions ALSO
+
+HEX
+\ string stack lexicon
+    variable ssp   0 ssp !              \ this is the string stack pointer
+
+    100 constant ss-width               \ string stack width
+
+ss-width 1- constant max$len            \ biggest string we handle
+
+
+\ : +ssp
+\         ss-width ssp +! ;             \ incr. string stack pointer 1 ss-width
+code +SSP
+        ss-width :parm
+        ssp :parm
+        inline: +!
+        next.
+
+END-CODE
+
+\ reset string stack pointer
+code clrssp
+        ssp :parm
+        inline: off
+        next.
+end-code
+
+
+\ : TOP$  SSP @ PAD + ;
+
+ code top$ ( -- addr )                  \ addr. of top of string stack ( pad+n )
+       ssp :parm
+       inline: @
+       inline: pad
+       inline: +
+       next.
+ end-code
+
+\ : 0..ff     0 max ff min ;
+code 0..FF
+        lit: 0
+        inline: max
+        lit: 0FF
+        inline: min
+        next.
+end-code
+
+\ : 1..ff     1 max ff min ;
+code 1..FF
+        lit: 1
+        inline: max
+        lit: 0FF
+        inline: min
+        next.
+end-code
+
+\ : bound    ( $ n -- ) max over c@ min ;     \ clip the length to the smallest string
+code bound
+        inline: max
+        inline: over
+        inline: c@
+        inline: min
+        next.
+end-code
+
+HEX
+\ String variable changed to compile SIZE BYTE for error checking
+\ This version also uses compile time size checking with an abort.
+    : $variable ( #bytes  --  )
+       create dup 100 u< not abort" illegal string size"  \ remove if not needed
+              ALIGN dup c, 0 c, allot
+              does> 1+ ;
+
+\ String Primitive operations
+
+ synonym len c@ ( adr$ - n )
+
+\ : maxlen ( str -- maximum length )  1- len ;
+code maxlen
+        inline: 1-
+        inline: c@
+        next.
+end-code
+
+\ : !len   ( n adr -- adr )  swap over c! ;
+CODE !LEN
+        inline: swap
+        inline: over
+        inline: c!
+        next.
+end-code
+
+code pack$  ( adr cnt -- $ )    \ over 1- c! 1- ;
+        inline: over
+        inline: 1-
+        inline: c!
+        inline: 1-
+        next.
+end-code
+
+
+\ : new.top$ ( -- top$ )  \ create a new string on the string stack of maximum length
+\       +ssp                             \ create the space
+\       top$
+\       0FF over 1- ! ;               \ set length to 0, maxlen to 255
+
+code new.top$
+        inline: +ssp
+        inline: top$
+        0FF :parm
+        inline: over
+        inline: 1-
+        inline: !
+        next.
+end-code
+
+: >top$ ( str -- )
+    new.top$ $! ;                   \ old code:  +ssp top$  $! ;
+
+
+\ primitives ( some of these come from concepts in PYTHON
+
+\ return the address of of the nth char in a string
+\ : ]$  ( adr$ n --  adr$[n] ) 1+ + ;
+ code ]$
+        inline: 1+
+        inline: +
+        next.
+ end-code
+
+
+
+: chr$ ( ascii#   --  top$ )   \ convert ascii char to $
+        new.top$ 0 ]$ c!            \ store the ascii# at NEW top$[0]
+        1 top$ c!                        \ set the char count to 1
+        top$ ;
+
+
+: push$ ( str -- top$)               \ push str onto the string stack
+        >top$ top$ ;                    \ found this phrase was used a lot.
+
+: $drop ( -- )                          \ decr. string stack pointer
+        top$ ss-width - PAD <
+        IF
+           clrssp
+           true abort" String stack underflow"
+        then
+        ss-width negate ssp +!  ;
+
+: $+C!   ( c $adr -- )      \ store 'c' on the end of a string
+       \  dup maxlen over len = abort" no room to append char."
+         DUP >R COUNT + C!  R@ len 1+  r> c! ;
+
+
+\ TEXT$ is like TEXT but much handier since you can get multiple
+\ inputs that simple stack up automatically. ( BL text$  BL text$ etc...)
+
+: TEXT$ ( delimit-char -- $ )  WORD PUSH$ ;
+
+\ c" is like $" but places strings on the stack
+
+
+ : c"    ( <text..> -- caddr u)
+        state @ 0>
+        if
+            [compile] $"
+            compile push$ COUNT
+        else
+           [char] " word push$ COUNT
+        then ;  immediate
+
+synonym S"  C"
+
+
+\ STRING I/O WORDS:
+\  $!  $.  I refer to as string I/O words. This type of word
+\ must clear the string stack when complete. Since these operators always
+\ DO something with end product string this does not pose much of restriction
+\ to the FORTH programmer and abstracts the details allowing the Forth
+\ programmer to write complex phrases of string language with less concern
+\ about the mechanism at work.
+\ STR! does run time error checking. Use $! if error checking not needed
+\ or VECTOR STR! into $!.
+
+synonym ($!)   $!       \ rename for compatibility with my other Forth systems
+
+behead' $!                \ remove old $! from dictionary
+
+\ Re-define $! to clear string stack when complete
+  : $!    ( $adr1 $adr2 -- )  ($!) clrssp ;
+
+\ useful if you need error checking
+: ?SIZE$ ( $1 $2 -- ? )   \ check if $1 can fit into $2
+        OVER LEN OVER MAXLEN > ABORT" String overflow" ;
+
+: $MOVE  ( $1 $2 -- )
+        ?SIZE$ $! ;
+
+\ re-define $. to clear string stack after printing.
+  : $.   ( $addr -- )
+        $. CLRSSP ;
+
+\ -------------------------------------------------------------------------
+\ Assembler COMPARE routine. Like most other Forths have.  Added B. Fox
+\ register usage
+\ str1 -> es:di,ax
+\ str2 -> ds:si,cx
+\ bx is flag
+\ es points to ds (HSF Lists segment)
+
+code compare ( adr1 len1 adr2 len2 -- n )
+            2 +[bp] di  mov.  \ save critical HSF registers to R-stack
+            4 +[bp] si  mov.
+            6 +[bp] es  mov.
+
+            cx bx mov.        \ len2 -> cx
+
+            ds   push.        \ transfer ds to es via the stack
+            es   pop.         \ es needs to point to the data segment
+
+            bx bx       xor.
+            si ( adr2)  pop.
+            ax ( len1)  pop.  \ len1 -> ax
+            di ( adr1)  pop.
+
+            cx   ax     cmp.
+            JE   eq:
+            JL  neq:
+
+            bx          inc.
+            jmp         eq:
+
+  @@ neq:   bx          dec.
+            cx  ax      mov.   \ put smaller length into loop counter (CX)
+
+  @@  eq:   jcxz done:         \ if cx=0 we get out of town!
+            cld.
+            repe: cmpsb.
+            je  done:
+            Jb  less:
+
+  @@ grtr:  bx  1 iw mov.
+            jmp done:
+
+  @@ less:  bx -1 iw mov.
+            jmp done:
+
+  @@ done:  di 2 +[bp] mov.     \ restore critical HSF registers from R-stack
+            si 4 +[bp] mov.
+            es 6 +[bp] mov.
+            next.
+end-code
+
+
+: $compare    ( adr$1 adr$2 -- -n:0:n )
+              count rot count compare ;
+
+: $>   ( adr$1 adr$2 -- ? )
+                $compare -1 = ;
+
+: $<   ( adr$1 adr$2 -- ? )
+                $compare  1 = ;
+
+: $=   ( adr$1 adr$2 -- ? )
+                $compare 0= ;
+
+\ *********************** FAR SEGMENT STRING WORDS ****************************
+DECIMAL
+
+\ Long (far segment) string operations for HSF2000 intel memory model
+: $.l     ( seg  adr$     --       )  countl typel ;
+: $movel  ( sseg sadr dseg dadr -- )  2over c@l 1+     cmovel ;  \ 3/86 was $!l
+: $!l     (      sadr dseg dadr -- )  >r lists @ -rot r> $movel ;
+: $@l     ( sseg sadr      dadr -- )     lists @ swap    $movel ;
+
+: -trailing$ ( $ -- $ )          \ removes trailing blanks, results in Top$
+        push$ count -trailing ( adr cnt ) pack$ ;
+
+
+\ -leading  Like -TRAILING, removes heading blanks.  Albert Van der Horst
+\ modified for HSF2000  Brian Fox.
+\ 4X speed increase over original code by using inline: CODE primitives in the loop !
+
+decimal
+CODE is_space? ( adr$ cnt -- ? )
+        inline: OVER
+        inline: C@
+        32 :parm
+        inline: =
+        inline: OVER
+        inline: 0=
+        inline: 0=
+        inline: AND
+        next.
+end-code
+
+code next_char
+        inline: 1-
+        inline: swap
+        inline: 1+
+        inline: swap
+        next.
+end-code
+
+ : -LEADING ( $adr cnt --  $adr cnt   )
+    BEGIN
+       is_space?       \ Original code:  over c@ bl = over 0= 0=  and
+    WHILE
+       next_char       \ Original code:  1- SWAP 1+ SWAP
+    REPEAT ;
+
+
+: -leading$ ( $ -- $ )
+        push$ count -leading ( adr cnt ) pack$  ;
+

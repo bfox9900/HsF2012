@@ -1,0 +1,38 @@
+\ Window stacks, allow windows to be pushed and pop
+\ Copyright Brian Fox   Oct 1992.
+
+[undefined] w-save  [if] include wbuf.hsf [then]   \ WBUF HAS not been translated to Hsf2012
+[undefined] stack   [if] include stacks.hsf [then]
+
+DECIMAL
+
+ 16 STACK W#STACK
+ 0 value B/CRTPAGE
+
+: WSP!    ( n -- )  W-BUFFERS 4I! ;
+: CLRWSP  ( -- )    0 WSP! ;
+: WSP@    ( -- n )  W-BUFFERS 4I@ ;
+
+: WSP+!    ( n -- )
+          WSP@ +
+          DUP  W-BUFFERS 2I@ SWAP  U< ABORT" Wstack overflow!"
+          WSP! ;
+
+: Wsize   ( -- n )  THE W# MODE@ NIP NIP W#BYTES DROP ;
+
+: INIT-WindowStack    CLRWSP  Wsize to B/CRTPAGE ;
+
+\ window PUSH & POP work on the current W# only
+: WPUSH   ( -- )
+          THE W# W#STACK PUSH
+          W-BUFFERS @ WSP@  W-SAVE
+          B/CRTPAGE  WSP+! ;
+
+: WPOP    ( -- )
+          B/CRTPAGE NEGATE  WSP+!
+          W#STACK POP IS W#
+          W-BUFFERS @ WSP@ W-RESTORE ;
+
+INIT-WindowStack
+
+

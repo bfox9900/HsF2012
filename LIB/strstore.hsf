@@ -1,0 +1,63 @@
+
+\  ** original code from HsForth $!
+\ ca' ($!) hex . 9A5  ok
+\ codes ? E28  ok
+\ // debug -ue28:9a5
+\ 0E28:09A5 5F            POP     DI
+\ 0E28:09A6 57            PUSH    DI
+\ 0E28:09A7 53            PUSH    BX
+\ 0E28:09A8 31DB          XOR     BX,BX
+\ 0E28:09AA 8A1D          MOV     BL,[DI]
+\ 0E28:09AC 43            INC     BX
+\ 0E28:09AD EB0D          JMP     09BC
+\ 0E28:09AF 01DB          ADD     BX,BX
+\ 0E28:09B1 7302          JNB     09B5
+\ 0E28:09B3 31DB          XOR     BX,BX
+\ 0E28:09B5 31C0          XOR     AX,AX
+\ 0E28:09B7 3BC3          CMP     AX,BX
+\ 0E28:09B9 7E01          JLE     09BC
+\ 0E28:09BB 93            XCHG    BX,AX
+\ 0E28:09BC 8BCB          MOV     CX,BX
+\ 0E28:09BE 5F            POP     DI
+\ 0E28:09BF 96            XCHG    SI,AX
+\ 0E28:09C0 5E            POP     SI
+\ 0E28:09C1 8CDA          MOV     DX,DS
+\ 0E28:09C3 8EC2          MOV     ES,DX
+\ 0E28:09C5 FC            CLD
+\ 0E28:09C6 F3            REPZ
+\ 0E28:09C7 A4            MOVSB
+\ 0E28:09C8 96            XCHG    SI,AX
+\ 0E28:09C9 5B            POP     BX
+\ 0E28:09CA AD            LODSW
+\ 0E28:09CB 97            XCHG    DI,AX
+\ 0E28:09CC FF25          JMP     [DI]
+
+code ($!)  ( c-addr c-addr2 -- )
+              DI          POP.                \ copy str2 to di
+              DI          PUSH.               \ push copy onto stack
+              BX          PUSH.               \ push str1 onto stack
+              BX  BX      XOR.                \ clear bx
+              BL [DI]     MOV.                \ mov 1st byte (len)of str2 copy to BL
+              BX          INC.                \ incr length
+              JMP :09BC
+              BX  BX      ADD.
+              JNB :09B5
+              BX  BX      XOR.
+@@ :09B5      AX  AX      XOR.
+              AX  BX      CMP.
+              JLE :09BC
+              BX AX       XCHG.
+@@ :09BC      CX BX       MOV.
+              DI          pop.
+              SI AX       xchg.
+              SI          pop.
+              DX DS       mov.
+              ES DX       mov.
+                          CLD.
+              REPZ:       MOVSB.
+              SI AX       xchg.
+              BX          pop.
+              next.
+end-code
+
+

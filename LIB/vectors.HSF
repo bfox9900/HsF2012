@@ -1,0 +1,154 @@
+HEX  \ High level control transfer & vectors   COPYRIGHT 1984 HARVARD SOFTWORKS
+
+
+CODE <+TO>
+        <% 58 D1E3     8B3C   894104 5B 46 46 %>
+END-CODE
+
+: +TO
+        THE STATE
+        IF   COMPILE <+TO>
+        ELSE  [COMPILE] ' DDUP @ 1- SWAP    U< ABORT" Past end"
+              SWAP 1+ 2* I!
+        THEN             ; IMMEDIATE
+
+CODE <TO>
+        <% 8B3C  895D02  5B 46 46 %>
+END-CODE
+
+: TO
+        THE STATE
+        IF  COMPILE <TO>
+        ELSE  [COMPILE] ' !
+        THEN ;  IMMEDIATE
+
+: DEFER
+        CREATE    ['] NEXT ,
+        ;CODE <% 8B7D02  FF25 %> ?CSP
+
+: VECTORS
+         CASE: SWAP DUP ,
+          2* 0 DO ['] NEXT , 2 +LOOP CSP 2+! [COMPILE]
+        ;CASE ;' <DOCASE>
+
+: DO:        : OKC NEST.  0BE C% HERE W%   53 C% 5D8D W% 02 C%
+                                           NEXT.  OLDC @ OKC OLDL @ ! ;
+\
+
+: NOTHING ;
+
+: DOER CREATE ' NOTHING , ;CODE   <% 45 45 897600 8B7502 %>  END-CODE
+VARIABLE >;AND
+
+CODE <MAKE:>
+        <% 8B04 46 46 8B3C 46 46 897502 96 21F6 7505 8B7600 4D 4D %>
+END-CODE
+
+: MAKE:
+        THE STATE
+        IF  COMPILE <MAKE:>  HERE >;AND  !  0 ,
+        ELSE  HERE  [COMPILE] ' !  [COMPILE] ]      !CSP ( 7/89 )
+        THEN  ;  IMMEDIATE
+
+
+: ;AND  COMPILE EXIT  HERE >;AND  @ !  ; IMMEDIATE
+: UNDO  ' NOTHING  [COMPILE] LITERAL
+  [COMPILE] ' THE STATE  IF COMPILE THEN  ! ; IMMEDIATE
+\  FOR: case-name  n1  n2  n3  . . . nn
+\  USE>   wother   w1  w2  w3  . . . wn  ;FOR
+
+CODE <FORDO> <% 89DA 8B5E00 4D 4D 8B07 01D0 40 01C3 01C3 8B3F 5B FF25 %> ?CSP
+\  DX<-BX BX<-[BP] BP-2 AX<-[BX] AX+DX AX+1 BX+2AX  DI<-[BX]
+
+: FOR:  SP@ CSP !  THE CURRENT IS CONTEXT  CREATE   HERE 0 , 0
+        BEGIN -1 IS ?#ABORT  BL AWORD <NUMBER> DROP THE ?#ABORT 0<
+        WHILE , 1+
+        REPEAT ?#ABORT 0! DROP HERE 1+  D@  3E45.5355 D= NOT ABORT" USE>?"
+               DDUP SWAP ! ]
+        DOES>  DUP>R MEMBER?  <FORDO> ;
+
+: ;FOR  1+ 4* + 2+ HERE ?PAIRS OKLW [COMPILE] [ ; IMMEDIATE
+
+
+\ case control for the compiler.  Removed to CAPS.HSF   B.Fox                        
+
+CODE <FIND>X  ?CSP
+CA'  <FIND>   DEFINES <FIND>X
+
+: >CAPS      COUNT OVER + SWAP
+          DO [% <% 8B7E00 8A05 3C61 7C08 3C7A 7F04 2C20 8805 %> %] 1 /LOOP ;
+
+AT: <FIND>C      HERE   >CAPS  <FIND>X  ;
+
+
+FIND HASH-ON 0= ?(((
+: -CAPS     CA' <FIND>  DEFINES <FIND> ;
+:  CAPS     CA' <FIND>C DEFINES <FIND> ;
+
+BEHEAD' NOTHING          BEHEAD' <FORDO>        DECIMAL EXIT )))
+
+: -CAPS    ?HASH @    IF CA' <FIND>*  DEFINES <FIND>
+                    ELSE CA' SEQ-FND  DEFINES <FIND>  THEN ;
+: CAPS     ?HASH @    IF CA' <FIND>*  DEFINES <FIND>X
+                    ELSE CA' SEQ-FND  DEFINES <FIND>X THEN
+                         CA' <FIND>C  DEFINES <FIND>  ;
+: HASH-OFF CA' <FIND>C DUP ['] <FIND> @      HASH-OFF
+            =  IF DEFINES <FIND>  CA' SEQ-FND  DEFINES <FIND>X ELSE DROP THEN ;
+: HASH-ON  CA' <FIND>C DUP ['] <FIND> @      HASH-ON
+            =  IF DEFINES <FIND>  CA' <FIND>*  DEFINES <FIND>X ELSE DROP THEN ;
+['] HASH-ON  ' FORGET-TASK 0A + !
+?HASH @ HASH-OFF
+BEHEAD' NOTHING
+BEHEAD' <FORDO>
+?( HASH-ON  )
+DECIMAL EXIT
+\ 
+
+HEX  \ High level control transfer & vectors   COPYRIGHT 1984 HARVARD SOFTWORKS
+            : NEST.      BP INC. BP INC. 0 +[BP] SI MOV. ;
+            : NEXT.      LODSW.  DI AX XCHG.  [DI] WORD-PTR JMPI. ;
+CODE <+TO>         AX POP. BX 1 SHL. DI [SI] MOV.
+                   04 +[BX+DI] AX MOV.  BX POP.  SI INC. SI INC.  END-CODE
+: +TO     THE STATE  IF   COMPILE <+TO>
+                   ELSE  [COMPILE] '     DDUP @ 1- SWAP  U< ABORT" PAST END"
+                          SWAP 1+ 2* I!  THEN             ; IMMEDIATE
+CODE <TO>   DI [SI] MOV. 02 +[DI] BX MOV.  BX POP.  SI INC. SI INC.  END-CODE
+: TO        THE STATE IF  COMPILE <TO>  ELSE  [COMPILE] ' !  THEN ;  IMMEDIATE
+: DEFER   CREATE    ['] NEXT ,
+           ;CODE    DI 2 +[DI] MOV.  [DI] WORD-PTR JMPI.   ?CSP
+: VECTORS      CASE: SWAP DUP ,
+          2* 0 DO ['] NEXT , 2 +LOOP CSP 2+! [COMPILE] ;CASE ;' <DOCASE>
+: DO:        : OKC NEST.  SI HERE IW MOV.  BX PUSH. BX 2[DI] LEA.
+    ( DO: can be used after ;' )           NEXT.  OLDC @ OKC OLDL @ ! ;
+CODE <CA>    DI [SI] MOV.     [DI] BX MOV.  BX POP.  SI INC. SI INC.  END-CODE
+: DEFINES    THE STATE     IF  COMPILE  <CA>
+                         ELSE [COMPILE] [']  !  THEN ; IMMEDIATE
+\
+\ Use HOP. macro in a code primitive to transfer to high level Forth.
+\ Use RESUME% to end execution of that high level Forth word.
+\
+\ Transfer to high level interrupt handler.  DOS or BIOS may be executing
+\ when interrupted, so all registers must be saved and a new thread initiated.
+\
+: NOTHING ;
+: DOER    CREATE  ' NOTHING ,                                \  DOES> @ >R
+               ;CODE BP INC. BP INC.  0 +[BP] SI MOV.  SI 2 +[DI] MOV. END-CODE
+VARIABLE >;AND
+         \  : <MAKE:>     R> DUP 2+  DUP 2+  SWAP  @  +2!   @ ?DUP IF >R THEN ;
+CODE <MAKE:> AX [SI] MOV. SI INC. SI INC.    DI [SI] MOV.
+                          SI INC. SI INC. 2 +[DI] SI MOV.
+              SI AX XCHG.                      SI SI AND.    JNZ MORE.
+          SI 0 +[BP] MOV. BP DEC. BP DEC.                    >>> MORE. END-CODE
+: MAKE:   THE STATE    IF  COMPILE <MAKE:>  HERE >;AND !  0 ,
+                     ELSE  HERE  [COMPILE] ' !  [COMPILE] ]  THEN ;  IMMEDIATE
+: ;AND    COMPILE EXIT  HERE >;AND @ !  ; IMMEDIATE          BEHEAD' >;AND
+: UNDO    ' NOTHING  [COMPILE] LITERAL
+                     [COMPILE] '      THE STATE  IF COMPILE THEN  ! ; IMMEDIATE
+AT:  <FIND>C             HERE COUNT OVER + SWAP
+             DO    I C@ ASCII a >=  I C@ ASCII z <=  AND
+                IF I C@ BL - I C! THEN  1  /LOOP          <FIND>X ;
+AT: <FIND>C      HERE COUNT OVER + SWAP
+           DO [% DI 0 +[BP] MOV.  AL [DI] MOV.  AL ASCII a IB CMP.  JL -LC.
+                                                AL ASCII z IB CMP.  JG -LC.
+                 AL 20 IB SUB.    [DI] AL MOV.  >>> -LC. %]  1 /LOOP <FIND>X ;
+

@@ -1,0 +1,22 @@
+ multi-task test suite
+
+: waitk  key drop ;
+
+: TEST
+           CR T." Testing this sucker...."
+
+          CR T." user0 = " UP@ U.
+          CR T." Init-multi..." waitk             
+             init-multi
+          CR t." Link 2 tasks..." waitk
+             TASK1 LNK-TSK
+             TASK2 LNK-TSK
+          CR T." Init 2 tasks..." waitk
+             T' PAUSE  TASK1 INIT-TASK
+             T' PAUSE  TASK2 INIT-TASK
+          cr t." Press key to blow up or task switch" waitk
+             100 0 DO  PAUSE LOOP
+           CR 
+           CR T." WE DID IT!"
+           HALT
+           BYE ;

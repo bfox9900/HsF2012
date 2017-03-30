@@ -1,0 +1,364 @@
+\ string stack minimal framework.  B. Fox
+
+\ ****************************************************************************
+\ Original code for TI-99
+\         Brian Fox London Ontario Canada
+\         Rev: 15/09/88
+
+\ simplified string stack primitives,  Oct 22, 2004 (just for fun. much faster!)
+\ Uses counted strings (a la Pascal)  255 bytes max in this version
+
+\ Enhancements:
+\   A "Size" byte compiled into each string for run time size checks
+\   Forth STACK handles string "variables" only (ie pointers to strings on the string stack)
+\   String stack of fixed width for easy string expression evaluation.
+\   TOP$ is the top of a stack of PAD's; for multiple string operations
+\
+\ Simple Memory management Theory
+\
+\  String operators allocate a new string on the top of the stack to for their work
+\  The string stack growths until a "String I/O" operation happens.
+\  String "I/O" means  $. or $!
+\  They collapse the string stack on completion and provide simple automatic memory management
+\ ***************************************************************************
+
+
+\ only assembler also Forth definitions ALSO
+
+HEX
+\ string stack lexicon
+    variable ssp   0 ssp !              \ this is the string stack pointer
+
+    100 constant ss-width               \ string stack width
+
+ss-width 1- constant max$len            \ biggest string we handle
+
+
+\ incr. string stack pointer 1 ss-width
+: +SSP
+        ss-width ssp +! ;
+
+\ reset string stack pointer
+: clrssp
+        ssp off ;
+
+
+: TOP$  SSP @ PAD + ;    \  !!System Dependancy:  top string is allocated above PAD. PAD is above HERE
+
+\ UN-tested alternative:  This could made to place string stack at HERE + an artbitrary offset
+\        : TOP$  SSP @ HERE 255 + ;
+
+
+: 0..ff     0 max ff min ;
+
+: 1..ff     1 max ff min ;
+
+: bound    ( $ n -- ) max over c@ min ;     \ clip the length to the smallest string
+
+
+HEX
+\ String variable changed to compile SIZE BYTE for error checking
+\ This version also uses compile time size checking with an abort.
+    : $variable ( #bytes  --  )
+       create dup 100 u< not abort" illegal string size"  \ remove if not needed
+              ALIGN dup c, 0 c, allot
+              does> 1+ ;
+
+\ String Primitive operations
+
+ synonym len c@ ( adr$ - n )
+
+ : maxlen ( str -- maximum length )  1- len ;
+
+: !len   ( n adr -- adr )  swap over c! ;
+
+: pack$  ( adr cnt -- $ )  over 1- c! 1- ;
+
+
+ : new.top$ ( -- top$ )  \ create a new string on the string stack of maximum length
+       +ssp                             \ create the space
+       top$ 0FF over 1- ! ;             \ set length to 0, maxlen to 255
+
+
+
+: $+C!   ( c $adr -- )      \ store 'c' on the end of a string
+       \  dup maxlen over len = abort" no room to append char."    \ possible to have error-checking
+         DUP >R COUNT + C!  R@ len 1+  r> c! ;
+
+
+
+\ *******************************************************************************************************
+\ STRING I/O WORDS:   **** PLEASE READ THIS ****
+
+\  $!  $.  I refer to as string I/O words.
+\ There is only one rule to this system:
+\          String I/O words MUST clear the string stack when the complete their execution
+\          This provides a very simple memory management system
+\
+\ Since these operators always DO something with end product string this
+\ does not pose much of restriction to the FORTH programmer and abstracts
+\ the details allowing the Forth programmer to write complex phrases of
+\ string language with less concern about the intermediate mechanism at work.
+\ *******************************************************************************************************
+
+\ Example:  remove leading and trailing spaces on 2 strings and concatentate them and print
+\
+\           string1 clean$ string2 clean$  +$  $.   ( all intermediate storage is transparent )
+\
+\ Explanation:                                                                Parameter Stack
+\ string1 goes onto the string stack,                                        ( string1 )
+\ it is "Cleaned" and the resultant string is now on the string stack,       ( new.string1 )
+\ string2 goes onto the string stack                                         ( new.string1, string2 )
+\ it is "Cleaned" and the resultant string is now on the string stack        ( new.string1, new.string2 )
+\ They are concatenated and the resultant string is now on the string stack  ( concat.string)
+\ $.  prints the string pointer sitting on the Forth stack.                  ( )
+\  and collapses String stack                 (  )
+\
+\ ********************************************************************************************************
+
+\ STRING I/O WORDS  $! $.
+: ($!) ( $1 $1 -- )  \ moves $1 to $2 no error checking
+      over c@ 1+ cmove ;
+
+\ $! stores string1 to string2  but also clears string stack when complete
+  : $! ( $1 $2 -- )
+    ($!) clrssp ;
+
+\ is $1 big enough to hold $2?  Useful if you need error checking
+
+: ?SIZE ( $1 $2 -- ?)  over len over maxlen > ;
+
+
+: ?SIZE$ ( $1 $2 -- ? )   \ check if $1 can fit into $2
+       ?SIZE ABORT" String size error" ;
+
+: $MOVE  ( $1 $2 -- )
+        ?SIZE$ $! ;
+
+: >top$ ( str -- )       \ push str onto string stack
+    new.top$ ($!) ;       \ store in top$ but don't collapse the string stack
+
+
+
+\ primitives ( some of these come from concepts in PYTHON
+
+\ return the address of of the nth char in a string
+ : ]$  ( adr$ n --  adr$[n] ) 1+ + ;
+
+
+: chr$ ( ascii#   --  top$ )   \ convert ascii char to string
+        new.top$ 0 ]$ c!            \ store the ascii# at NEW top$[0]
+        1 top$ c!                        \ set the char count to 1
+        top$ ;
+
+
+: push$ ( str -- top$)               \ push str onto the string stack
+        >top$ top$ ;                    \ found this phrase was used a lot.
+
+
+: $drop ( -- )                          \ decr. string stack pointer
+        top$ ss-width - PAD <
+        IF
+           clrssp
+           true abort" String stack underflow"
+        then
+        ss-width negate ssp +!  ;
+
+
+\ TEXT$ is like TEXT but much handler since you can get multiple
+\ inputs that simple stack up automatically. ( BL text$  BL text$ etc...)
+
+: TEXT$ ( delimit-char -- $ )  WORD PUSH$ ;
+
+
+\ compile a string into memory
+: ,"     [CHAR] " word LEN 1+ ALLOT ;
+
+\ $"  places a literal string on the string stack
+
+
+ : $"    ( <text..> -- $ADDR)
+        state @ 0>
+        if
+            COMPILE ,"
+            ,"
+
+        else
+           [char] " word push$
+        then ;  immediate
+
+
+\ $. prints a string and clears string stack after printing.
+: $.   ( $addr -- )
+        count type CLRSSP ;
+
+\ : .top$   top$ count type ;                \  debugging word commented out
+
+
+\ syntax candy to impress your friends
+: :="  ( $addr -- <text> )                   \ usage:  name :=" brian fox"
+          [char] " word swap $MOVE ;
+
+: :="" ( $addr -- )    dup maxlen 0 fill ;
+
+
+
+\ Thanks to MPE for this code
+: (+$) ( addr n $dest -- ) \ Add string ADDR n to the counted string $DEST
+        >r  2dup  r@ count + swap cmove       \ add source to end
+        r@ c@ + r> c!                         \ add length to count
+        drop ;                                \ remove address
+
+: +$  ( str1,str2 -- pad )
+         swap
+         >top$ count top$ (+$) top$ ;
+
+
+\ concatentate a string variable with a string constant
+: &"    ( str1 -- <text>                      \ usage: jim$ &" kalihan"
+         [char] " word +$ ;
+
+: left$  ( adr$ #char --  top$ )
+        0 BOUND swap  push$ !len  ;
+
+
+: right$ ( $addr1 n  -- $addr2)
+        +ssp
+        0 bound  >r  count r@ - + r@ top$ c!
+        top$ 1+   r>  cmove  top$ ;
+
+: mid$  ( adr$ start #char  --  top$  )
+        new.top$
+        >r >r  + 1+  r> r> (+$)
+        top$ ;
+
+: repeat$ (  #repeats adr$ -- top$ )
+        push$ >r
+        1+ C@ swap  0..ff
+        r@ 2dup c! 1+  swap  rot fill  r> ;
+
+: str$  ( n -- top$)   \ number to string convertor
+        0 <# #s #> ( addr n ) new.top$ (+$) top$  ;
+
+: $val  ( adr$ - n or dn )  \ string to number convertor
+       >number dpl @ -3fff <
+       if drop then ;
+
+: -trailing$ ( $ -- $ )          \ removes trailing blanks, results in Top$
+        push$ count -trailing ( adr cnt ) pack$ ;
+
+
+\ -leading  Like -TRAILING, removes heading blanks.  Albert Van der Horst
+decimal
+: is_space? ( adr$ cnt -- ? ) over c@ BL = over 0= 0= and ;
+: next_char  1- SWAP 1+ SWAP ;
+
+: -LEADING ( $adr cnt --  $adr cnt ?  )
+    BEGIN
+       is_space?       \ Original code:  over c@ bl = over 0= 0=  and
+    WHILE
+       next_char       \ Original code:  1- SWAP 1+ SWAP
+    REPEAT ;
+
+
+: -leading$ ( $ -- $ )
+        push$ count -leading ( adr cnt ) pack$  ;
+
+
+\ removes leading and trailing spaces
+: clean$  ( $ -- top$ )
+        -leading$ -trailing$ ;
+        
+        
+\ these are added for completeness ...................................
+
+: $>ANS ( $ -- adr u)  COUNT ;      \ CONVERT Pascal string to ANS Forth string just use COUNT
+
+: ANS>$  ( addr u -- $ )  NEW.TOP$ (+$) ;
+
+: $>z    ( $ -- zstring )               \ convert $ to a 'C' style '0' terminated string
+        push$  count over + 0 swap c! ; \ original $ is not altered
+
+
+: ZLEN   ( zstring -- addr u )          \  return the length of a '0' terminated string
+        -1                              \ result is actually just like an ANS string
+        BEGIN  1+ 2dup + C@ 0=  UNTIL ;
+
+
+: z>$    ( ztring -- $ )                \ convert 0 terminated string to Pascal string
+           zlen  ans>$ ;                \ original Zstring is not altered
+
+        
+        
+
+EXIT
+
+
+\ Assembler COMPARE routine. Like most other Forths have.  Added B. Fox
+\ register usage
+\ str1 -> es:di,ax
+\ str2 -> ds:si,cx
+\ bx is flag
+\ es points to ds (HSF Lists segment)
+
+code compare ( adr1 len1 adr2 len2 -- n )
+            2 +[bp] di  mov.  \ save critical HSF registers to R-stack
+            4 +[bp] si  mov.
+            6 +[bp] es  mov.
+
+            cx bx mov.        \ len2 -> cx
+
+            ds   push.        \ transfer ds to es via the stack
+            es   pop.         \ es needs to point to the data segment
+
+            bx bx       xor.
+            si ( adr2)  pop.
+            ax ( len1)  pop.  \ len1 -> ax
+            di ( adr1)  pop.
+
+            cx   ax     cmp.
+            JE   eq:
+            JL  neq:
+
+            bx          inc.
+            jmp         eq:
+
+  @@ neq:   bx          dec.
+            cx  ax      mov.   \ put smaller length into loop counter (CX)
+
+  @@  eq:   jcxz done:         \ if cx=0 we get out of town!
+            cld.
+            repe: cmpsb.
+            je  done:
+            Jb  less:
+
+  @@ grtr:  bx  1 iw mov.
+            jmp done:
+
+  @@ less:  bx -1 iw mov.
+            jmp done:
+
+  @@ done:  di 2 +[bp] mov.     \ restore critical HSF registers from R-stack
+            si 4 +[bp] mov.
+            es 6 +[bp] mov.
+            next.
+end-code
+
+
+: $compare    ( adr$1 adr$2 -- -n:0:n )
+              count rot count compare ;
+
+: $>   ( adr$1 adr$2 -- ? )
+                $compare -1 = ;
+
+: $<   ( adr$1 adr$2 -- ? )
+                $compare  1 = ;
+
+: $=   ( adr$1 adr$2 -- ? )
+                $compare 0= ;
+
+
+
+
+
+

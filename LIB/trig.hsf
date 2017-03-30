@@ -1,0 +1,106 @@
+( TRIG  Copyright 1984,1986 HARVARD SOFTWORKS, ALL RIGHTS RESERVED )
+\ Modified for use with HSF2000 Brian Fox London Ontario Canada 2006
+
+
+[undefined] FCONSTANT [if] include FLOATING.hsf  [then]
+
+
+DECIMAL
+
+' NEXT USER-VECTOR >TRIG
+' NEXT USER-VECTOR TRIG>
+
+F=PI 180. d>F   F/ FCONSTANT F=PI/180
+180. d>F F=PI   F/ FCONSTANT F=180/PI
+
+
+: DG->RD     F=PI/180 F* ;
+: RD->DG     F=180/PI F* ;
+: RADIANS    ['] NEXT   IS >TRIG   ['] NEXT   IS TRIG> ;
+: DEGREES    ['] DG->RD IS >TRIG   ['] RD->DG IS TRIG> ;
+
+CODE XARCTAN  ( ::3   x -- arctan[x] )
+        <%                                   9B D9  E4 9B DD 7E  %>
+        <%  02 30 C0 9B  8A 66 03 9E   74 54 73 05  9B D9 E0 FE  %>
+        <%  C0 9B D9 E8  9B D8 D1 9B   DD 7E 02 9B  8A 66 03 9E  %>
+        <%  77 16 72 19  9B DD D9 9B   D9 E0 9B D8  C0 9B D9 EB  %>
+        <%  9B D9 FD 9B  DD D9 EB 1F   9B D9 F3 EB  1A 9B D9 C9  %>
+        <%  9B D9 F3 9B  D9 E8 9B D9   E0 9B D9 EB  9B D9 FD 9B  %>
+        <%  DD D9 9B DE  E1 EB 00 20   C0 74 03 9B  D9 E0        %>
+        next.
+end-code
+
+ -2 CONSTANT M2
+
+CODE XTRIANGLE    ( ::3   angle-radians   --  adjacent opposite        )
+                  (       AH[status word c0 c3 c1] AL[0 if rem=zero]   )
+        <%     9B D9 E4  9B DD 7E 02   30 F6 9B 8A  66 03 9E 73  %>
+        <%  05 FE C6 9B  D9 E1 9B DF   06 %>  ' M2  W%  <% 9B  D9 EB 9B D9  %>
+        <%  FD 9B DD D9  9B D9 C9 9B   D9 F8 9B DD  7E 02 9B 8A  %>
+        <%  66 03 9E 7A  F2 9B D9 E4   9B DD 7E 02  9B 8A 46 03  %>
+        <%  24 41 34 40  75 20 9B DD   D8 9B DD D8  F6 C4 02 74  %>
+        <%  08 9B D9 E8  9B D9 E8 EB   28 F6 C4 40  9B D9 E8 9B  %>
+        <%  D9 EE 74 1A  EB 1B F6 C4   02 74 08 9B  DE E9 9B D9  %>
+        <%  F2 EB 06 9B  DD D9 9B D9   F2 F6 C4 42  7A 03 9B D9  %>
+        <%  C9 F6 C4 41  7A 03 9B D9   E0 80 E4 01  30 F4 9B D9  %>
+        <%  C9 74 03 9B  D9 E0    %>
+        next.
+end-code
+
+
+: FTRIANGLE    >TRIG XTRIANGLE ;
+
+: ANGLE  ( :: x y -- atan[y/x] )
+        FSWAP FDUP F0=
+        IF FDROP
+           F0<  F=PI F2/
+           IF FNEGATE THEN
+           ELSE FDUP  F0<  F/ XARCTAN
+                IF  FDUP F0>  F=PI  IF F-
+                ELSE F+
+                THEN
+           THEN
+        THEN
+        TRIG> ;
+
+
+: FATAN  ( ::3  x -- atan[x]) XARCTAN TRIG> ;
+
+
+: FASIN  ( ::3 )   FDUP F0= NOT
+        IF FDUP F0< FINV F**2 F=1 F-   FDUP F0>
+              IF FSQRT FINV  FATAN  ELSE FDROP F=PI F2/ TRIG> THEN
+           IF FNEGATE THEN  THEN ;
+
+: FACOS  ( ::3 )   FDUP F0=
+           IF FDROP  F=PI F2/ TRIG>
+         ELSE FDUP F0< FINV    F**2 F=1 F-  F=0 FMAX  FSQRT  FATAN
+                      IF F=PI TRIG> -F- THEN
+         THEN ;
+
+: FTAN   ( ::3  x -- tan[x] )  FTRIANGLE F\ ;
+: FCOT   ( ::3  x -- ctn[x] )  FTRIANGLE F/ ;
+: FHYPOT ( ::1  x y -- x [x**2+y**2]**1/2 )  F**2 FOVER F**2 F+ FSQRT ;
+: FSIN   ( ::3  x -- sin[x] )  FTRIANGLE FSWAP FHYPOT F/ ;
+: FCOS   ( ::3  x -- cos[x] )  FTRIANGLE       FHYPOT F/ ;
+: FSEC   ( ::3  x -- sec[x] )  FTRIANGLE       FHYPOT F\ ;
+: FCSC   ( ::3  x -- csc[x] )  FTRIANGLE FSWAP FHYPOT F\ ;
+: FE**+- ( ::3  x -- e**x e**-x )   FDUP FE** FSWAP FNEGATE FE** ;
+: FTANH  ( ::3 ) >TRIG FE**+-  FOVER FOVER F- F-ROT F+ F/ ;
+: FCOTH  ( ::3 ) >TRIG FE**+-  FOVER FOVER F- F-ROT F+ F\ ;
+: FSINH  ( ::3 ) >TRIG FE**+-  F- F2/ ;
+: FCOSH  ( ::3 ) >TRIG FE**+-  F+ F2/ ;
+: FSECH  ( ::3 ) >TRIG FE**+-  F+ F=1 F=1 F+ F\ ;
+: FCSCH  ( ::3 ) >TRIG FE**+-  F- F=1 F=1 F+ F\ ;
+: FASINH ( ::3 ) F=1 FHYPOT F+ FLN  TRIG> ;
+: FACOSH ( ::3 ) FDUP F**2 F=1 F- FSQRT F+ FLN TRIG> ;
+: FATANH ( ::3 ) FDUP F=1 F+ FSWAP F=1 -F- F/ FLN F2/  TRIG> ;
+: FACOTH ( ::3 ) FDUP F=1 F+ FSWAP F=1  F- F/ FLN F2/  TRIG> ;
+
+
+BEHEAD' M2
+BEHEAD' XTRIANGLE
+BEHEAD' XARCTAN
+
+DECIMAL
+

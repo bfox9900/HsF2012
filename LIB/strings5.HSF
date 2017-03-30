@@ -1,0 +1,305 @@
+\ strings5.hsf  made a little closer to standard forth  B. Fox
+\ based on:  STRINGS COPYRIGHT 1984 HARVARD SOFTWORKS, ALL RIGHTS RESERVED
+
+
+\ ----------------------------------------------------------------------------
+\ Modified to provide re-entrant string functions by:
+\         Brian Fox London Ontario Canada
+\         Rev: 15/09/88
+\ Additions Include:
+\   Compile time size checking. ( for novice users, can be commented out )
+\   Size byte compiled into string for optional run time size checks.
+
+\   String stack of fixed width for easy string expression evaluation.
+\   TOP$ is the top of a stack of PAD's; for multiple string operations
+\   $. and $! collapse the string stack on completion. Provides easy garbage collection
+\   +$ is 40% faster and allows multiple concatenation ( A$ B$ $+ C$ $+ etc...)
+\   :="   for easy assignment of string literals.
+\   :=""  for null string assignment
+\   $POS   finds position of a character within a string.
+\   $SIZE  returns the maximum size of the string
+\   $.R   prints flush right text with leading blanks
+\   $COMPARE re-coded using COMPARE (ANS/ISO Forth)
+\   $"  has been renamed as C" for ANS/ISO Forth
+\   PUSH$ moves a counted string to the string stack and returns TOP$
+\   DROP$ removes TOP$, returns nothing,
+\   changed VAL to $VAL to be consistent with naming convention
+
+\   Apr 20 2008 recoded all time critical pieces with inline: 2x speed improvement
+\   Sept 29 2014 added $depth, .$S ]top$  for debugging the string stack in Monty.hsf
+\   Oct 7 2014: removed all inline code words to try and kill bugs. (Not the problem)
+\   2015   ADDED check for underflow ?SSP
+\   Jun 24 2015 replaced assembler version of COMPARE with a new inline[] and Forth version
+\               that is 20% faster on a Pentium and I have the > < outputs reversed!! Dumb ass
+\   Mar 6 2016  began stripping this down. removed all FAR functions except $findl  Moved to FARstrg.hsf
+\               Added NEW: to replace +ssp,  changed clrssp to COLLAPSE 
+\ ----------------------------------------------------------------------------
+
+HEX
+\ string stack lexicon
+            variable ssp                                        \ this is the string stack pointer
+        101 constant ss-width                                   \ string stack width
+ss-width 1- constant max$len                                    \ biggest string we handle
+
+
+: NEW:     ( -- ) ss-width ssp +! ;                              \ incr. string stack pointer 1 ss-width
+: COLLAPSE ( -- ) ssp off ;                                      \ reset string stack pointer
+
+: ?SSP     ( -- )  SSP @ 0 <=  if  collapse  true Abort" String stack underflow"  then ;
+: DROP$    ( -- )  ?SSP ss-width negate ssp +! ;
+: TOP$     ( -- ) SSP @ PAD + ;
+
+HEX
+\ String variable changed to compile SIZE BYTE for error checking
+\ This version also uses compile time size checking with an abort.
+: $VARIABLE ( #bytes  --  )
+              create dup max$len u< not abort" illegal string size"  \ remove if not needed
+              ALIGN dup c, 0 c, allot align
+              does> 1+ ;
+
+\ String Primitive operations
+
+ synonym len c@ ( adr$ - n )
+
+: $size     ( adr -- n )     1- c@ ;                             \ return the size of a string
+
+: packlen   ( adr cnt -- $ )  over 1- c! 1- ;                    \ convert stack string to counted string
+
+: new.top$  ( -- top$ )                                          \ create a new string on the string stack of maximum length
+            new: top$                                            \ create the space
+            max$len over 1- c! ;                                 \ set length to 0, maxlen to 255  all in one 2 byte store.
+
+: >top$     ( str -- ) new.top$ $! ;                             \ old code:  +ssp top$  $! ;
+
+\ Wil Baden's toolbelt ( Neil Baud)
+\ some words are inline CODE for 2x speedup
+
+code C+!    ( n addr -- ) inline[  DUPC@ ROT + SWAP C! ] next. end-code
+
+: +PLACE    ( addr1 length addr2 -- )                              \ Append addr1 length to addr2
+             2dup 2>r  COUNT + swap move 2r> c+! ;
+
+: PLACE     ( src n dst -- ) 2DUP C! CHAR+ SWAP MOVE ;
+
+: STRING,   ( addr len -- ) here over 1+ allot  place ;
+
+code APPEND-CHAR  ( char string -- )
+            inline[ dup>r count dup 1+ r> c! + c! ] next. end-code
+
+: >new:top$ ( addr len -- top$) new: top$ dup >r place r> ;
+
+\ code /string ( caddr1 u1 n -- caddr2 u2 )
+\            inline[ rot over + -rot - ] next. end-code
+
+code /string
+            ax pop.
+            dx pop.
+            ax bx sub.
+            dx bx add.
+            dx push.
+            ax bx xchg.
+            next.
+            end-code
+
+
+: split$    ( str len char -- str1 len1 str2 len2 ) >r 2dup r> scan 2swap 2 pick - ; \ Hsforth already has "SPLIT" for integers
+
+: snip      ( addr len -- addr' len' ) 1- swap 1+ swap ;      \ equiv to "1 /string" but 3x faster
+
+\ string code debugging words
+: $DEPTH    ( -- n)  TOP$ PAD - ss-width  / ;         \ return the depth of the string stack
+
+: ]Top$     ( n -- $)  ss-width * pad + ;             \ index into the string stack to get a specific string
+
+: .SS       ( -- )                                    \ non-destuctive string stack viewer
+            0 $DEPTH
+            ?DO
+               I 2 .R ." : "  i ]TOP$ COUNT TYPE CR
+            -1 +LOOP ;
+
+\ ]$  return the address of of the nth char in a string
+\ usage:  100 BUFFER: STRING[
+\         STRING[ 5 ]$ C@
+
+code ]$     ( adr$ n -- adr$[n] ) inline[ char+ + ] next. end-code
+
+: chr$      ( ascii# -- top$ ) new.top$ 1 over c! 1+ c! ;   \ convert ascii char to $
+
+: push$     ( str -- top$)  >top$ top$ ;                    \ push str onto the string stack
+
+: ?length   ( len1 len2 -- ) > ABORT" String overflow" ;
+
+: ?SIZE$    ( $1 $2 -- ? )
+            over len over $SIZE ?length ;  \ check if $1 can fit into $2
+
+: $+C!      ( c $adr -- )                                   \ store 'c' on the end of a string with error checking
+            dup len 1+ over $size ?length append-char ;
+
+: +char    (  $ char -- $)   over append-char ;             \ $+C!, reversed args and returns new string
+
+: +BL      ( $adr -- $adr) BL +CHAR ;
+
+\ TEXT$ is like TEXT but much handier since you can get multiple
+\ inputs that simple stack up automatically. ( BL text$  BL text$ etc...)
+
+: TEXT$     ( delimit-char -- $ )  WORD PUSH$ ;
+
+\ This is for ANS compatibility   **WARNING** you must pay attention to string stack growth
+: S"        ( <text..> -- $addr len)
+            state @ 0=
+            if
+               [char] " TEXT$ count
+            else
+               postpone c"
+               postpone push$
+               postpone count
+            then ; immediate
+
+\ STRING I/O WORDS:
+\  $!  $.  I refer to as string I/O words. This type of word
+\ must clear the string stack when complete. Since these operators always
+\ DO something with end product string this does not pose much of restriction
+\ to the FORTH programmer and abstracts the details allowing the Forth
+\ programmer to write complex phrases of string language with less concern
+\ about the mechanism at work.
+\ STR! does run time error checking. Use $! if error checking not needed
+\ or VECTOR STR! into $!.
+
+synonym ($!)   $!                                     \ rename for compatibility with my other Forth systems
+
+behead' $!                                            \ remove old $! from dictionary
+
+: $!        ( $adr1 $adr2 -- ) ($!) COLLAPSE ;           \ Re-define $! to clear string stack when complete
+
+: $MOVE     ( $1 $2 -- )   ?SIZE$ ($!) ;                   \ move string with size checking, do NOT collapse string stack
+
+: $.        ( $addr -- )  $. COLLAPSE ;                   \ re-define $. to clear string stack after printing.
+: .top      ( -- )       top$ count type ;                \ NON-destructive TOP$ print
+
+\ candy to impress your pascal friends
+: :="       ( $addr -- <text> ) "word swap ($!) ;          \ usage:  name :=" brian fox"
+: :=""      ( $addr -- )    dup $SIZE 0 fill ;
+
+: LEFT$     ( $addr #char -- top$) >r count drop r>  >new:top$ ;
+
+: RIGHT$    ( $addr1 n  -- top$)   >r COUNT R> OVER MIN /STRING  NEW.TOP$ PLACE TOP$ ;
+
+: MID$      ( adr$ start #char  -- top$) new.top$  2>R  + 1+ 2R> +place  top$ ;
+: $POS      ( adr$ char -- position)  swap cmember? ; : STR$  ( n -- top$) 0 <# #s #> >new:top$ ;
+: +$        ( $1 $2 -- top$ ) SWAP >R COUNT R> PUSH$ +PLACE TOP$ ;
+: $VAL      ( adr$ - n or dn ) >number the dpl -3fff < if drop then ;
+
+: -TRAILING$ ( $ -- $ )    push$ count -trailing packlen ;
+: -LEADING  ( addr len -- addr' len' ) begin over c@ bl = while SNIP repeat ;
+: -LEADING$ ( $ -- $ )     push$ count -leading packlen ;
+
+: trim$     ( $ -- $ ) push$ COUNT -leading -trailing packlen ;   \ removes leading and trailing spaces
+
+: lower$    ( $1 -- $2) push$ DUP lower ;                          \ converts on top of string stack
+: upper$    ( $1 -- $2) push$ DUP upper ;                          \ converts on top of string stack
+: $xchg     ( str1,str2 -- )                                       \ does run time size checking
+            ?SIZE$ SWAP ?SIZE$
+            dup >top$
+            over swap ($!)                                         \ don't collapse the stack. we still need it
+            top$ swap $! ;
+
+\ moved COMPARE to forth12.hsf  core file.  BF  Mar 3 2016
+
+: $compare  ( adr$1 adr$2 -- -n:0:n )  count rot count COMPARE ;
+
+: $>        ( adr$1 adr$2 -- ? ) $compare 0< ;             \ adr$1 > adr$2 -> true
+: $<        ( adr$1 adr$2 -- ? ) $compare 0> ;             \ adr$1 < adr$2 -> true
+: $=        ( adr$1 adr$2 -- ? ) $compare 0= ;
+
+HEX  \ $findl is needed for color words... I like those.
+CODE $FINDL (  stringaddr  seg  start  stop  --  seg  addr  flag  )
+            ( length      1st char )
+            ( addr 2nd [last] char )
+            (      count           )  (  addr 2nd [last] char  ) ( ds )
+            (            length    )  (       location         ) ( es )
+            cx  bx  mov.
+            di pop.
+            es pop.
+            bx pop.
+            dh dh xor.
+            ax [bx] mov.
+            ah al xchg.
+            dl ah mov.
+            di push.
+            si push.
+            cx  di  sub.   ( stop - start )
+            jb reverse.
+@@ forward.
+            bx inc.
+            bx inc.
+            cx inc.
+@@ next.
+            si bx mov.
+            di inc.
+            repne: scasb.
+            jcxz  none.
+            cx dx xchg.
+            cx dec.
+            repe:  cmpsb.
+            pushf.
+            di cx add.
+            cl ah mov.
+            di cx sub.
+            popf.
+            je found.
+            si bx mov.
+            cx dx xchg.
+            jmps  next.
+@@ reverse.
+            bx dx add.
+            al [bx] mov.
+            bx dec.
+            cx neg.
+            cx dx sub.
+            cx inc.
+            cx inc. std.
+@@ nextr.
+            si  bx  mov.
+            di dec.
+            repne: scasb.
+            jcxz  none.
+            cx  dx xchg.
+            cx dec. repe:
+            cmpsb.
+            je  foundr.
+            si bx mov.
+            cx  dx xchg.
+            di dx sub.
+            dl ah mov.
+            di dx add.
+            jmps nextr.
+@@ foundr.
+            di inc.
+@@ found.
+            si pop.
+            bx pop.
+            es push.
+            di push.
+            bx -1 iw mov.
+            jmps exit.
+@@ none.
+            si pop.
+            bx pop.
+            es push.
+            bx push.
+            bx bx xor.
+@@ exit.
+            cld.
+            next.
+            END-CODE
+
+\ finds  $2 inside of $1, and returns the position on the stack
+\ Original Name INSTR, change to SEARCH$ to be more like FORTH 2012
+
+: search$ ( $1 $2 - n )
+        lists @ rot dup>r dup dupc@ + $findl
+        if r> -  nip
+        else rdrop 2drop 0
+        then  ;
+
+decimal

@@ -1,0 +1,24 @@
+\  cheap MS timer for TI-99
+
+\ This timer reads the interrupt byte counter at memory >8378
+\ The resolution is limited to 16 ms. (1/60 of a second)
+
+TARGET-COMPILING
+
+8378 EQU tim60
+
+: 16ms
+        tim60 c@
+        begin
+           tim60 c@  over - abs
+           1 >
+        until
+        drop ;
+        
+: 1sec
+        tim60 c@
+        begin
+           tim60 c@  over - abs
+           59 >
+        until
+        drop ;

@@ -1,0 +1,55 @@
+\ WORDS.HSF for use with intelect program only         27jun88  FOX
+
+FORTH DEFINITIONS
+
+
+ HEX
+: WORDS
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+                OUT @  0>
+                IF
+                   TAB
+                THEN
+                R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+                DUP OUT @ + C/L @ >
+                IF CR THEN TYPEL
+
+               50 ms
+
+                ?TERMINAL
+                IF
+                    CR ." paused"
+                    KEY DROP
+                    CR
+                THEN
+
+                3 - DUP  1+
+                0=
+        UNTIL
+        DROP RDROP ;
+
+ HEX
+
+: COLOR-WORDS
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+                
+                CR ." 1   12   "     \ coding numbers for WINVIEW colours
+
+
+                R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+                DUP OUT @ + C/L @ > IF  THEN   TYPEL
+
+                ?TERMINAL  abort" Color-Words stopped by user"
+
+                3 - DUP  1+
+                0=
+        UNTIL
+        DROP RDROP ;
+DECIMAL
+

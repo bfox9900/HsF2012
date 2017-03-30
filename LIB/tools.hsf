@@ -1,0 +1,316 @@
+\ tools.hsf      extensions & additions by Brian Fox  OCT 1992, Mar 2005
+\ based on toolbox 10/3/85     copyright 1983,1984,1985  HARVARD SOFTWORKS
+\
+
+\ Mar 14 2006 Added colour WORDS just for fun.
+\ Apr moved colour WORDS to a separate file. (WORDS2.HSF)
+\ Apr 20 2008 Removed TRACE utility.  It didn't work with HSF2000
+\ May 25 2008 added .CODE to SEE .  Shows loadable machine code.
+              ( easier than a full dis-assembler :-)
+\ Sep 1  2016  reversed order  on OKdepth,  replaced 0 D. with U. in .S (why 0 D. ??)
+
+
+ONLY FORTH DEFINITIONS
+
+
+DECIMAL
+27 CONSTANT <ESC>
+
+HEX
+\ char < constant '<'
+\ char > constant '>'
+
+: ?CR         ( ? --) IF CR THEN ;
+: ?NEWLINE    ( -- )  OUT @  C/L @ 12 - > IF CR space THEN ;      \ creates newline and indents
+
+HEX
+: <SDEPTH>    ( --) CONSOLE  [CHAR] < EMIT   DEPTH 0 0 D.R  [CHAR] > EMIT ;
+
+: <OK+depth>     <OK> <sdepth>  ;
+
+\ change the prompt
+: OK-OFF        ['] CONSOLE  TO PROMPT ;
+: OK-ON         ['] <OK>     TO PROMPT ;
+: SDEPTH        ['] <SDEPTH> TO PROMPT ;
+: OKdepth       ['] <ok+depth> TO prompt ;
+
+
+\ screen display speed control ............................
+6 VALUE SCREENDELAY
+
+: ?abort ( ? -- ) if abort then ;
+
+: PAUSESCREEN
+        screendelay mS
+        ekey? ekey>char dup
+        if
+            <esc> = ?abort
+            ekey ekey>char <esc> = ?abort
+        else
+            drop
+        then ;
+
+
+\ DUMP utility primitives .................................
+
+ \ : .##   ( n -- )    SPACE ## ;                               \ ## is in the core system
+
+: .####    ( seg adr -- )  S>D <# # # # # #> TYPE ;
+
+: .seg:adr ( seg adr -- )   swap .#### ." :" .#### ;
+
+: es.bytes ( adr n -- )                                          \ ES contains the segment to use
+           bounds
+           DO   I C@E  space ##   1 /LOOP ;
+
+: es.ascii ( adr n --)                                           \ print ascii values or '.' for non-printable chars
+           bounds                                                \ ES contains the segment to use
+           DO 
+              I C@E
+              DUP  BL 1- [CHAR] ~ within? NOT
+              IF DROP  [CHAR] . THEN emit
+           1 /LOOP ;
+
+
+\ DUMPL has been changed to look like DOS debug. Segment is always shown
+\ Example:
+\ 1508:0000  04 00 45 58 49 54 84 08  00 4C 52 45 54 84 0C 00  ..EXIT...LRET...
+\ 1508:0010  44 4C 49 54 84 0A 00 4C  49 54 83 0E 00 3C 3C 2C  DLIT...LIT...<<,
+
+hex
+: DUMPL ( seg offset n -- )                                      \ dump a segment
+        BASE @ >R
+        HEX
+        ROT ES!        \ ES = seg
+        ( offset n )
+        bounds                                                   \ now 'I' will be the offset address
+        DO
+            CR ES@ I .seg:adr space                              \ print the seg:adr
+            I     8 es.bytes SPACE                               \ print 8 bytes of memory
+            I 8+  8 es.bytes  2 SPACES                           \ print the next 8 bytes of memory
+            I   010 es.ascii                                     \ print 16 ascii format BYTES
+            pausescreen
+        010 /LOOP                                                \ increment the offset address by 16
+        CR                                                       \ new line
+        R> BASE ! ;                                              \ restore BASE
+
+
+: DUMP ( adr n -- ) LISTS @ -ROT DUMPL ;                         \ dump the HsForth LISTS segment
+
+
+\ code patching & code viewing *****************************************
+: !% ( adr val - adr+1 ) OVER CODES @ SWAP C!L 1+  ; ( for alterations )
+
+
+\ define some word types for COLOR coded WORDS by getting their "code address" using CA'
+\ this is akin to getting the "type" of a word in other languages
+\ we keep these 'types' as constants to check the type of a word and set it's color
+
+CA' KEY        CONSTANT auser-vector
+CA' scr        CONSTANT auser-var
+CA' auser-var  CONSTANT aconstant
+CA' LISTS      CONSTANT avar
+CA' <dodoes>   CONSTANT adoer                                    \ children of CREATE DOES>
+
+[UNDEFINED] ACOLON [IF]                                          \ this one shows up in another file so I don't want to duplicate it
+CA' dump CONSTANT acolon
+[THEN]
+
+\ : .HEAD
+\        CODES @  OLDC @ HERE-C 2DUP U. - DUMPL ; ( dump current )
+
+
+
+\ stack viewer *********************************************************
+: .S
+        DEPTH DUP
+        IF SP@ S0 4-
+           STACKS @ ES!
+           DO
+                I @E U.
+           -2 +LOOP
+        ELSE ." Empty stack "
+        THEN
+        CR DROP ;
+
+
+\ SEE  utility:  decompiles forth words 
+
+\ : ?COLON ( n -- ? )             \ return true if n is colon definition
+\         DUP@   ACOLON  = ;
+
+: ?KIND
+        CREATE
+                [COMPILE] '  ,          \ DO NOT CHANGE THIS TO [']    It doesn't work!
+
+        DOES>   @ OVER =
+                IF   DROP  TRUE
+                ELSE FALSE
+                THEN ;
+
+
+?KIND ?_EXIT    EXIT
+?KIND ?BRANCH   BRANCH
+?KIND ?0BRANCH  0BRANCH
+?KIND ?<>BRANCH <>BRANCH
+?KIND ?<LOOP>   <LOOP>
+?KIND ?</LOOP>  </LOOP>
+?KIND ?<+LOOP>  <+LOOP>
+?KIND ?<.">     <.">
+?KIND ?<ABORT"> <ABORT">
+?KIND ?<,">     <,">
+?KIND ?LIT      LIT
+?KIND ?DLIT     DLIT
+
+: .DECIMAL   ( n -- )                         \ print n in decimal
+        BASE @ SWAP DECIMAL . BASE ! ;
+
+\ Define the kinds of words to find
+CREATE BRANCHES
+        5 ,
+        ' BRANCH  ,
+        ' 0BRANCH  ,
+        ' <LOOP>  ,
+        ' </LOOP>  ,
+        ' <+LOOP> ,
+
+create ]branch$
+       ," "
+       ," ELSE "
+       ," IF "
+       ," LOOP "
+       ," /LOOP "
+       ," +LOOP "
+       ," WHILE "
+       ," REPEAT "
+       ," AGAIN  "
+       ," "
+
+: .branch$ ( n -- )  ]branch$  .nth$ ;
+
+
+CREATE STRINGS     3 ,  ' <."> ,    ' <ABORT"> ,  ' <,"> ,
+
+
+CREATE LITS        2 ,  ' LIT   ,   ' DLIT  ,
+
+
+CREATE COMPILES    2 ,  ' COMPILE ,   ' [COMPILE] ,
+
+
+CREATE $"NAMES     0 C,
+                   2 C,   CHAR . C,  CHAR " C,
+                   6 HERE ," ABORT" C!  CHAR " C,
+                   2 C,   CHAR , C,  CHAR " C,
+                   2 C,   CHAR , C,  CHAR " C,
+
+
+\ ===========================================================================
+\ .CODE produces machine code output that can be compiled by HSF2000
+\ just copy and paste the output from the screen into a text file.
+\ Example:
+\
+\       see !l
+\
+\       CODE !L
+\               <% 8C  DA  1F  58  89  07  8E  DA  5B %>
+\               next.
+\       END-CODE
+\       ok
+\ ===========================================================================
+
+: .<%     cr  6 spaces ." <% " ;               \ start line of machine code
+: .%>    ." %>" ;                             \ end line of machine code
+
+: .CODE  ( code-adr -- )                                        \ print out machine code
+          codes @ ES!
+          .<%
+          1000                                                  \ MAX code size= 4K bytes
+          bounds
+          do
+             i @E  'NEXT =                                      \ is the end of a word
+             if  leave
+             else
+                 hex
+                 i C@E ## space                                 \ write out the code byte
+                 out @ 35  / 0>                                  \ is the line 35 chars?
+                 if  .%>                                         \ end the line of code bytes
+                     .<%                                         \ start new line of code bytes
+                 then
+             then
+          loop
+          .%>                                                   \ finish the line of machine code
+          CR ."     next."  ;                                   \ and NEXT.  macro
+
+
+
+DEFER <DIS-ASSEMBLE>                            \ deferred word to plug in a dis-assembler some day
+
+' .CODE IS <DIS-ASSEMBLE>                       \ assign the DIS-ASSEMBLE run-time code
+
+: LPA>CA  ( lpa -- ca) NFA C@E SWAP  @E  DUP@ ;  \ complicated segmented architecure!
+
+\ changed 'SHOW' in HS/FORTH to 'SEE' (industry norm)
+\ This is a simple deompiler that shows the RAW execution tokens by name.
+\ Therefore BEGIN, UNTIL , WHILE REPEAT don't display like source code
+\ but only show as BRANCH or 0BRANCH with an offset.
+
+: SEE
+  FIND-LPA DUP LPA>CA  ( -- LPA code-addr)
+  ACOLON -                                      \ Test if it's NOT a colon word
+  IF    \ it's not COLON, treat as a code word...
+       dup
+       CR
+       CR ." CODE" .word
+       nip
+          ( cfa )                               \ fix up the stack to get the right params
+       @  ( codeaddr ) <DIS-ASSEMBLE>           \ dis-assemble it
+       cr ." END-CODE"
+       cr
+
+  ELSE   \ it's a Forth word...
+                                                ( -- count-byte cfa )
+        DUP                                     ( -- count-byte cfa cfa )
+        CR ." : " .WORD CR                      ( -- count-byte cfa )
+        cell+                                   ( -- count-byte pfa )
+        tab
+        BEGIN
+             ?NEWLINE                                             \ OUT @ 48 > ?CR
+
+             DUP@                               ( -- count pfa xt )
+             DUP ['] EXIT =
+             IF  CR ." ; "
+                2DROP 40 AND
+                IF ." IMMEDIATE"  THEN EXIT                       \ end of the definition
+             THEN
+
+             DUP BRANCHES MEMBER?
+             IF   .WORD
+                  ++@ 2/ SPACE DUP .DECIMAL                        \ print the branch offset
+                  0< ?CR cell+
+
+             ELSE
+
+              DUP STRINGS MEMBER?  ?DUP
+                   IF  $"NAMES SPACE .NTH$ SPACE DROP
+                       cell+ DUP 4- @ COMPILES MEMBER?   NOT
+                       IF COUNT 2DUP TYPE +  CH" EMIT  THEN
+                   ELSE  DUP LITS MEMBER?
+                         IF SPACE ['] LIT =
+                            IF    ++@  . cell+
+                            ELSE cell+ DUP 2@ D. 4+
+                            THEN
+                          ELSE
+                            DUP ['] <DO> = ?CR .WORD cell+
+                          THEN
+                    THEN
+             THEN
+        AGAIN
+  THEN ;
+
+TRUE TO TOOLS       \ tell the system the tools are loaded
+
+\ BEHEAD'' BRANCHES $"NAMES
+
+DECIMAL
+

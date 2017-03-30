@@ -1,0 +1,171 @@
+\ trace utility ***********************************************************
+
+
+: .T
+        DEPTH DUP
+        IF      SP@ S0 cell- SWAP
+                STACKS @ ES!
+                DO
+                  I @E 0 D.
+                cell +LOOP
+         ELSE ." Empty stack "
+         THEN   CR DROP ;
+
+: .RS  ( rp@ >4 -- )
+        2DUP >
+        IF      THE BASE -ROT HEX
+                DO
+                   STACKS @ I @L U.
+                cell /LOOP
+                TO BASE
+        ELSE 2DROP
+        THEN ;
+
+: .WRDE      ES@ SWAP .WORD ES!   ;
+
+: <TRACK>    SPACE .WRDE SPACE .S ;
+
+: TRACK      OLDL @  [COMPILE] LITERAL  COMPILE  <TRACK>  ;  IMMEDIATE
+
+
+WARNING OFF
+
+: ?COLON        DUP@   ACOLON  = ;
+
+: ?KIND
+        CREATE
+                [COMPILE] '  ,
+
+        DOES>    (
+                @ OVER =
+                IF
+                    DROP
+                    TRUE
+                ELSE
+                    FALSE
+                THEN ;
+
+
+?KIND ?_EXIT    EXIT
+?KIND ?BRANCH   BRANCH
+?KIND ?0BRANCH  0BRANCH
+?KIND ?<>BRANCH <>BRANCH
+?KIND ?<LOOP>   <LOOP>
+?KIND ?</LOOP>  </LOOP>
+?KIND ?<+LOOP>  <+LOOP>
+?KIND ?<.">     <.">
+?KIND ?<ABORT"> <ABORT">
+?KIND ?<,">     <,">
+?KIND ?LIT      LIT
+?KIND ?DLIT     DLIT
+
+VARIABLE MARGIN
+VARIABLE IP
+VARIABLE HLD=
+VARIABLE ?STEP
+
+Hex
+: >C1D     1D  OUT @ - SPACES ;
+: >C33     33  OUT @ - SPACES ;
+
+
+: INDENT   RP@ MARGIN @ - SPACES ;
+
+: PAD+   HLD HLD= @&!   B0 LISTS 4+ +! ;
+: PAD-                 -B0 LISTS 4+ +!   HLD= HLD @&! ;
+
+: .BRANCH     3C EMIT  ++@ 0 .R 3E EMIT ;
+
+CREATE   TRACE-DEPTH  3 ,
+CREATE   RECENT       0 ,
+
+: TR.S
+    ES@ >R
+    >R >R
+    PAD+ >C1D
+    RP@ 06 - 0A    .RS
+    33 OUT @ - DUP 0>
+    IF  SPACES  
+    ELSE   DROP CR  33 SPACES    
+    THEN .S
+    ?STEP @
+     IF
+        BEGIN
+             ." E> " QUERY THE SPAN 2 <>  THE TIB @ 3E45 <> OR
+        WHILE
+             INTERPRET CR
+        REPEAT
+    THEN  
+    PAD- R> R> R> ES! ;
+
+: .STRING
+        CH" EMIT SPACE 2+ COUNT 2DUP TYPE CH" EMIT  +  ;
+
+: TRACE'
+
+        RP@   2+  MARGIN !    -2     [']
+        CR  >C1D  ." Return Stack" >C33 ." Parameter Stack" CR
+
+        BEGIN
+             ?COLON                                           \ colon def decode
+             IF
+             ?<.">                                            \ ." decode
+                    IF INDENT 2E EMIT   .STRING DUP@ CR
+                    ELSE  ?<ABORT">
+                             IF INDENT ." ABORT" .STRING SWAP
+                    IF ."   ok " DROP QUIT
+                    ELSE CR DUP@
+                    THEN
+              ELSE INDENT ." :" DUP .WRDE TR.S
+                   RECENT @ OVER U<
+                   RP@ MARGIN @ -   TRACE-DEPTH @ 2* < AND
+                   IF SWAP 2+ >R  ++@
+                   ELSE SWAP IP ! EXECUTE CR IP  @  ++@
+                   THEN
+              THEN
+              THEN
+( primitive )
+       ELSE      INDENT SPACE SPACE DUP                                ELSE
+
+                 ?<,">      IF  8 EMIT 8 EMIT 8 EMIT 8 EMIT    24 EMIT DUP 2+  SWAP     \ ."  decoder
+                                                        .STRING DUP@   ELSE
+                 ?0BRANCH   IF  PAD+  .BRANCH SWAP DUP .    PAD-                        \ if decoder
+                                IF 2+ ELSE DUP@ + THEN          DUP@   ELSE
+
+                 ?<>BRANCH  IF  PAD+  .BRANCH SWAP DUP . 3 PICK DUP . =  PAD-           \ else decoder
+                               IF NIP 2+ ELSE DUP@ + THEN       DUP@   ELSE
+
+                 ?BRANCH    IF  PAD+  .BRANCH    PAD- DUP@ +    DUP@   ELSE
+                 ?<LOOP>    IF  SPACE       <LOOP>  [ 08 , ]       4+                   \ loop
+                             BRANCH  [ 06 , ]    ++@ +          DUP@   ELSE
+                 ?<+LOOP>   IF  SPACE  SWAP <+LOOP> [ 08 , ]       4+                   \ +loop
+                             BRANCH  [ 06 , ]    ++@ +          DUP@   ELSE
+
+                ?</LOOP>   IF  SPACE  SWAP </LOOP> [ 08 , ]       4+                    \ unsigned loop
+                             BRANCH  [ 06 , ]    ++@ +          DUP@   ELSE
+
+                ?LIT       IF   ++@ SPACE DUP PAD+ . PAD- SWAP   ++@   ELSE            \ literal
+
+                ?DLIT      IF  2+ DUP  2@  SPACE  2DUP  PAD+ D. PAD- ROT  2+   ++@   ELSE  \ double literal
+
+               ?_EXIT     IF     DROP R>                                     DUP@   ELSE   \ exit
+                               SWAP IP !   SPACE  EXECUTE    IP @              ++@
+                 THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN  TR.S
+             THEN PAUSESCREEN
+             OVER 0=
+      UNTIL
+      2DROP ;
+
+
+: TRACE ( 'word' )
+        ?STEP OFF
+        TRACE' ;
+
+: SSTRACE
+          ?STEP ON
+          TRACE' ;
+
+WARNING 1-!
+
+Decimal
+

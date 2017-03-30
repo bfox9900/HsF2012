@@ -1,0 +1,12 @@
+\ TIMEOUT pre-empts time hogging tasks by invoking YIELD
+
+VARIABLE OLD-UP
+
+: ?TIMEOUT
+            UP @  OLD-UP @  =
+            IF
+               TIME-OUT-CNT 1+!
+            ELSE
+             UP @  OLD-UP !
+            THEN ;
+

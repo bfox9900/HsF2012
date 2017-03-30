@@ -1,0 +1,89 @@
+\ simnple structure words from DDJ june 1987
+\ modified for use with HSF2000
+
+\ June 20, 2015  re-worked <struc:> to use inline[  ]
+
+\ 2 CONSTANT WSIZE     (we will replace with the word CELL)
+
+: <STRUC>
+        CREATE ,
+        DOES>  @ + ;
+
+\ conditionally compile inline version for speed if available
+[defined] inline[
+[if]
+
+code <struc:>
+        inline[ dup@ dup>r rot swap !  r> ]         \ significant speedup using dup@, dup>R and inlining
+        next.
+end-code
+
+[else]
+
+: <struc:>     DUP @  DUP >R ROT + SWAP !  R> ;
+
+[then]
+
+: STRUC:
+        CREATE ,
+        DOES>  <struc:>
+               <STRUC> ;
+
+: STRUC-ARRAY:  ( #slots, slot-size -- <name>)
+        CREATE
+               DUP , * ALLOT
+        DOES>  ( subscript -- addr)       ( need to add index checking...)
+               DUP @ ROT * + CELL+ ;
+
+: sizeof  ( -- <struc> n )
+          ' >body @          \ get the data from the "parameter field"  New word is the "body" of the word
+          state @
+          if
+             [compile] literal
+          then ; immediate
+
+\ Words to make your code pretty
+: double ( n -- n) 2 cells ;
+: quad   ( n -- n) 4 cells  ;
+
+
+true [if]
+
+\ example:
+\ uses naming convention where: ':' indicates a defining word
+\                               ']' at the end indicates a field
+\                               '[' at the beginning of a word is a record
+
+\  This creates "database" language look to the records and fields
+
+          0 STRUC:  RECORD:
+              cell  RECORD: LINK]
+               20   RECORD: NAME]
+               20   RECORD: ADDRESS]
+               20   RECORD: City]
+               10   RECORD: Prov]
+               12   RECORD: PHONE#]
+
+       CREATE [BUFFER  sizeof RECORD: ALLOT
+
+\ load up the fields in our record
+
+        16 [BUFFER LINK] !
+        c" Brian Fox"        [buffer name] $!
+        c" 68 HAWTHORNE RD." [BUFFER ADDRESS] $!
+        c" Markham"          [buffer City] $!
+        c" Ontario"          [buffer Prov] $!
+        c" 416 648 9133"     [buffer phone#] $!
+
+cr ." Print our record structure..."
+cr
+cr ." [buffer link] ?     "  [buffer link] ?
+cr ." [buffer name] $.    "  [buffer name] $.
+cr ." [buffer address] $. "  [buffer address] $.
+cr ." [buffer city] $.    "  [buffer city] $.
+cr ." [buffer prov] $.    "  [buffer prov] $.
+cr ." [buffer phone#] $.  "  [buffer phone#] $.
+
+\ etc....
+
+[then]

@@ -1,0 +1,189 @@
+\ wordtype.hsf                          BJF 25SEPT2014
+\ display words by of one type
+
+
+: uservector? ( code_adr -- ?)  auser-vector = ;
+: user-var?  ( code_adr -- ?)   auser-var = ;
+: vector?    ( code_adr -- ?)   adoer = ;
+: constant?  ( code_adr -- ?)   aconstant = ;
+: variable?  ( code_adr -- ?)   avar = ;
+: colonword? ( code_adr -- ?)   acolon = ;
+
+: codeword?  ( code_adr -- ?)          \ a code word is NOT any of the other things
+             >R
+             r@ colonword?             ( adr ? )
+             r@ uservector? OR         ( adr ? )
+             r@ user-var?   OR
+             r@ vector?     OR
+             r@ constant?   OR
+             r> variable?   OR
+             NOT
+             ;
+
+
+[undefined] es:type
+
+[if]
+
+\ all 'word' addresses are assumed to be in the ES segment
+
+HEX
+: cnt@  ( addr -- cnt )   C@E 03F and ;
+
+\ special TYPE that types from the ES segment
+: es:type ( addr cnt -- )
+        bounds
+        do
+          i C@E emit
+        loop ;
+
+\ from LATEST defined word, link back to the PREVIOUS word in the list
+
+: PREVIOUS ( adr -- adr_previous_word)     DUP CNT@ - CELL- 1- ;
+: >txt ( nfa -- txtadr cnt )               DUP CNT@ dup>R - r> ;      \ convert nfa address to start of the text with count
+                                                                      \ Warning: NFA is in the context vocabulary segment!!
+
+: txt>ca   ( off  --  code-address )  cell- @E @ ;
+: nfa>ca ( nfa -- ca) >txt ( adr cnt) drop ( adr)txt>ca ;             \ convert the HsForth Name field address to the code segment address
+
+[then]
+
+
+[undefined] totalwords++   [if]  : totalwords++   totalwords 1+! ;   [then]
+
+
+hex
+
+: .constant ( nfa --  nfa)                         \ prints only CONSTANTS
+        dup >txt ( adr cnt) drop ( adr)txt>ca constant?
+            if
+                DUP color.word TAB
+                totalwords++
+            then ;
+
+
+: .codeword ( nfa --  nfa)                         \ only prints CODE words
+        dup >txt ( adr cnt) drop ( adr) txt>ca codeword?
+            if
+                DUP color.word TAB
+                totalwords++
+            then ;
+
+
+: .colonword ( nfa --  nfa)                        \ only prints COLON definitions
+        dup >txt ( adr cnt) drop ( adr)txt>ca colonword?
+            if
+                DUP color.word TAB
+                totalwords++
+            then ;
+
+
+: .varword ( nfa --  nfa)                          \ only prints variables
+        dup >txt ( adr cnt) drop ( adr)txt>ca variable?
+            if
+                DUP color.word TAB
+                totalwords++
+            then ;
+
+: .users ( nfa --  nfa)                            \ only prints a USER Variable
+        dup >txt ( adr cnt) drop ( adr)txt>ca user-var?
+            if
+                DUP color.word TAB
+                totalwords++
+            then ;
+
+\ this is the secret sauce to minimize the looping code.
+defer .SPECIFIC_WORD    \ we make this word print only the type of words we want to see
+
+
+\ This is the re-usable looping and logic that is used by all the words
+: (WORDTYPE) ( -- )     \ if no text is given show ALL words
+        CR
+        CR
+        totalwords off
+        CONCUR                         \ CONTEXT @  CURRENT !
+        LATEST  ( nfa)
+        BEGIN
+
+             .specific_word            \ vectored word does the selecting of word types
+             pausescreen
+            ( nfa) PREVIOUS            \ find the previous word in the list
+            DUP CNT@ 0=                \ is the previous word length=0?
+            over 0< or                 \ had to add this second test because PREVIOUS returned a neg. number with last word???
+        UNTIL
+        DROP COLLAPSE
+        .totalwords ;
+
+
+\ create the output words by vectording the action of .specific_word
+: colons
+    ['] .colonword is .specific_word
+    (wordtype) ;
+
+: variables
+    ['] .varword   is .specific_word
+    (wordtype) ;
+
+: constants
+    ['] .constant  is .specific_word
+    (wordtype) ;
+
+: users
+    ['] .users     is .specific_word
+    (wordtype) ;
+
+: codewords
+    ['] .codeword  is .specific_word
+    (wordtype) ;
+
+\ code ends ...............................................................
+
+
+false [if]
+
+\ old code
+
+ : .wordtype  ( code_address  -- )
+ \   DUP ." (" 3 .R ." ) "          debugging line
+    CASE
+        auser-vector OF  ." user-vector " ENDOF
+        auser-var    OF  ." user-var "    ENDOF
+        aconstant    OF  ." constant"     ENDOF
+        acolon       OF  ." Colon-def"    ENDOF
+        avar         OF  ." Variable"     ENDOF
+        adoer        OF  ." Vector"       ENDOF
+
+      ( default: acode ) ." Code " 
+    ENDCASE ;
+    
+: .type  
+         [compile] pfa-of  cfa  .wordtype ;
+
+
+variable display-type
+
+
+\ find all words in the vocabulary that match display-type
+: like ( -- <text> )     \ if no text is given show ALL words
+        display-type 0= abort" Display-type VALUE has not been set"
+        cr display-type .wordtype
+        CR
+        BL TEXT$ UPPER     \ we can only match upper case from dictionary
+        totalwords off
+        CONCUR             \ CONTEXT @  CURRENT !
+        LATEST
+        BEGIN
+            dup nfa>ca display-type @ =   \ does the code address of this word match the display-type
+            if
+                DUP color.word TAB
+                pausescreen
+            then
+            ( adr) PREVIOUS               \ find the previous word in the list
+            DUP CNT@ 0=                   \ is the previous word length=0?
+        UNTIL
+        DROP COLLAPSE
+        .totalwords ;
+
+
+
+[then]

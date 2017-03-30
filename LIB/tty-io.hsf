@@ -1,0 +1,191 @@
+\ TTY-I/O.INT    I/O primitives for use with other users
+DECIMAL
+\ dependancies sorted out here
+FIND VECTORS  0= ?( FLOAD \FORTH\HSF\VECTORS )
+FIND YIELD    0= ?( CODE YIELD  END-CODE  )  \ do nothing word if no multitasking loaded
+FIND ESC      0= ?( 27 CONSTANT ESC )
+FIND ANSI     0= ?( FLOAD ANSI.FOX )
+
+FORTH DEFINITIONS
+\ This lexicon is used to replace THE EXISTING BIOS based serial
+\ I/O words in HSForth.  These words use the user-var PORT# rather than
+\ the VAR COM#.  this is needed because each user or task needs a different
+\ port to communicate on.
+\ The BASE ADDRESS of any I/O device is found by using the the word ]COM_BASE
+\ from the 8250 file.  EX: THE PORT# ]COM_BASE  ( -- I/O-adr)
+\       This is a POLLED I/O implementation for use primarily with
+\ low speed glass TTY terminals. It has been tested at up to 9600 baud.
+
+DECIMAL
+  017 CONSTANT XON                 \ this is the CHYRON XON byte
+  019 CONSTANT XOFF                \ this is the CHYRON XOFF byte
+
+\ line status register constants
+   06 CONSTANT txsr_bit                 \ TX shift register
+   00 CONSTANT rx_bit
+
+\ modem control register constants
+   SYNONYM dtr_bit  0
+   SYNONYM rts_bit  1
+   07 CONSTANT dcd_bit
+   05 CONSTANT dsr_bit
+   04 CONSTANT cts_bit
+
+    2 VAR #PORTS                   \ set this to the maximum # of COM ports
+HEX
+
+\ ?TTY behaves like ?CKEY only maybe faster and within the PORT# system.
+OPT-ON
+CODE ?TTY
+          OPT"  0
+                LN-ST REGISTER@ rx_bit B@
+                IF
+                    DROP  RX/TX REGISTER@
+                THEN  "
+ END-CODE
+
+: XOFF-SLEEP ( wait for XON char )
+        BEGIN   ?TERMINAL S->C YIELD XON =  UNTIL ;
+
+: ?STOP
+        ?TERMINAL S->C
+        BEGIN-CASE
+          ESC   CASE-OF  TRUE ABORT" Escape key detected" ELSE
+          XOFF  CASE-OF  XOFF-SLEEP                       ELSE
+          BL    CASE-OF  KEY DROP                         ELSE DROP
+        END-CASE  ;
+
+: MCEMIT ( c -- )
+        dtr_bit rts_bit OR MDM-CTL REGISTER!    \ handshake I'm ready!
+        BEGIN
+             ?STOP
+             LN-ST REGISTER@ txsr_bit B@        \ check for TX empty
+       \      MDM-ST REGISTER@                   \ read the Modem status
+       \    ( DUP) cts_bit B@                    \
+       \      SWAP dsr_bit B@ AND                \ Check DSR bit
+        \     AND                                \ both must be TRUE
+             YIELD                              \ let someone else have time
+        UNTIL
+        RX/TX REGISTER!                         \ OK now send the Char!
+        1 OUT+ ;
+
+: MCKEY   ( -- ? )
+        BEGIN
+            YIELD
+            LN-ST REGISTER@ rx_bit B@             \ read the 1st bit
+        UNTIL ( true )
+        RX/TX REGISTER@ ;                     \ read the character
+
+\ : TTYPAGE  0C EMIT ;
+
+: WHO   ." Intelect Task#[" TASK# ? ." ]" 4 SPACES ." Com" PORT# @ 1+ . CR ;
+
+\ These are used with TTY to select the PORT# for a new terminal.
+: >PORT   ['] MCEMIT IS EMIT ;
+
+: COM1:   0 to PORT# ;
+: COM2:   1 to PORT# ;
+: COM3:   2 to PORT# ;
+: COM4:   3 to PORT# ;
+
+: >COM1:   THE PORT# >R   COM1: >PORT    R> to PORT# ;
+: >COM2:   THE PORT# >R   COM2: >PORT    R> to PORT# ;
+: >COM3:   THE PORT# >R   COM3: >PORT    R> to PORT# ;
+: >COM4:   THE PORT# >R   COM4: >PORT    R> to PORT# ;
+
+
+
+
+DECIMAL
+08 CONSTANT BS
+
+\ terminal control primitives
+: <LF>     10 EMIT ;
+: <BS>   ( adr -- ) BS EMIT ;
+: <BEEP>  07 EMIT ;
+: <TAB>    8 SPACES ;
+: <FF>     12 EMIT ;
+: <ESC>    27 EMIT ;
+
+\ This EXPECT is a little different because it must work under
+\ HS/FORTH/INTELECT multi-user system. The normal value of I is not available
+\ to routines that are compiled outside the DO LOOP because each task has a
+\ unique stack segment.  For this reason a rather large word has been made
+\ with all the KEY cases coded "in line".  There are no doubt nicer ways to
+\ to do this but I'm in a hurry.  To accomadate a different terminal, with
+\ escape codes for example, the <ESC> key case could be easily factored
+\ outside the LOOP.  These different routines are then vectored into EXPECT
+\ ( See : TTY in this file when to
+
+: <TTY-EXPECT>  ( adr,len -- )    \ this is vectored to EXPECT for terminals
+        DDUP  THE TIBSEG  -ROT 0 FILLL         \ clear the entire tib
+        ES@ >R  THE TIBSEG ES!
+        0
+        DO
+           KEY DUP BL <
+           IF  ( is it less than a space character?)
+               BEGIN-CASE
+               BS CASE-OF
+                        I 0>     ( check if the cursor is at 0 )
+                        IF  -1 +>R  BS EMIT
+                           SPACE 8 EMIT -2 OUT+
+                           BL OVER  I IC!E
+                           -1 +>R
+                        ELSE <BEEP>  THEN      ELSE
+                13 CASE-OF  ( CR)    LEAVE         ELSE
+                12 CASE-OF  PAGE  LEAVE         ELSE
+                09 CASE-OF  TAB                 ELSE  EMIT
+                END-CASE
+           ELSE ( it's ascii so put it on the screen )
+                DUP EMIT
+                OVER I IC!E
+           THEN
+           I to SPAN
+        LOOP
+        DROP
+        R> ES! ;
+
+\ This word is used to turn a normal BACKGROUND: task into a MULTIUSER
+\ terminal
+: GLASS-TTY
+         ['] MCEMIT       to EMIT
+         ['] MCKEY        to KEY
+         ['] <FF>         to PAGE
+         ['] ?TTY         to ?TERMINAL
+         ['] <TTY-EXPECT> to EXPECT
+         ['] DDROP        to XY  ;             \ no cursor control
+
+\ VT100.tty terminal personality
+: VT100
+         ['] MCEMIT       to EMIT
+         ['] MCKEY        to KEY
+         ['] <FF>         to PAGE
+         ['] ?TTY         to ?TERMINAL
+         ['] <TTY-EXPECT> to EXPECT
+[ ANSI ] ['] CUP          to XY  ;             \ ANSI  cursor control
+
+AT: TTY-CONSOLE
+         THE TASK# 0=
+         IF
+              CRT KBRD
+              ['] <CR> to CR       \ printing re-defines CR so put it back
+         THEN ;
+
+CA' TTY-CONSOLE DEFINES CONSOLE  \ !! SEE DEF. : AB"HASH ; in FASTCOMP.INT
+
+: >TALENT    COM4: >PORT ;
+
+
+: BROADCAST ( $ -- )   \ sends to all RS232 ports
+        ( DUP) CONSOLE $. CR
+        THE PORT# >R
+        #PORTS 0
+        DO
+              I to PORT#
+              ['] MCEMIT to EMIT
+              DUP CR $.
+         LOOP
+         DROP
+         R> to PORT#
+         CONSOLE ;
+

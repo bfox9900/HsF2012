@@ -1,0 +1,22 @@
+\ zero strings and ANS string support   B Fox  2009 Jan 26
+
+\ these are added for completeness ...................................
+
+ : $>ANS ( $ -- adr u)  COUNT ;      \ CONVERT Pascal string to ANS Forth string just use COUNT
+
+: ANS>$  ( addr u -- $ )  NEW.TOP$ (+$) ;
+
+: $>z    ( $ -- zstring )               \ convert $ to a 'C' style '0' terminated string
+        push$  count over + 0 swap c! ; \ original $ is not altered
+
+
+: Z>ANS   ( zstring -- addr u )          \  return the length of a '0' terminated string
+        -1                              \ result is just like an ANS string
+        BEGIN  1+ 2dup + C@ 0=  UNTIL ;
+
+
+: z->$    ( ztring -- $ )                \ convert 0 terminated string to Pascal string
+          Z>ans  ans>$ ;                \ original Zstring is not altered
+
+
+

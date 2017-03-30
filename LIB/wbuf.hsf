@@ -1,0 +1,162 @@
+\ WBUF       Copyright 1988 Harvard Softworks, All rights reserved.
+\ converted non-standard double word names to ANS Forth B Fox HSF2012
+\ cleaned up format, made test code conditional compile
+
+HEX
+\
+CR ." Initial 16k window buffer segment is W-BUFFERS" CR
+." W-LEFT & W-RIGHT horizontally scroll active window using W-BUFFERS:0..size  "
+CODE VEGA!       <% B805 6F CD10 5B %> END-CODE
+CODE SET-RWM     <% BACE03 B005 EE 42 93 EE 5B %> END-CODE
+CODE READ-PLANE  <% BACE03 B004 EE 42 93 EE 5B %> END-CODE
+CODE WRITE-PLANE <% BACE03 B008 EE 42 B0FF EE BAC403 B002 EE 42 93 EE 5B %>
+                    END-CODE
+
+\    SET-RWM   ( mode[0..2] -- )   DX 03CE IW MOV.  AL 5 IB MOV.  AL OUT-DX.
+\              DX INC.  AX BX XCHG. AL OUT-DX. BX POP. END-CODE
+\    WRITE-PLANE  DX 03CE IW MOV.  AL  8 IB MOV.  AL OUT-DX.   ( plane -- )
+\                 DX INC.          AL -1 IB MOV.  AL OUT-DX.
+\                 DX 03C4 IW MOV.  AL  2 IB MOV.  AL OUT-DX.
+\                 DX INC.          AX BX   XCHG.  AL OUT-DX. BX POP. END-CODE
+\    READ-PLANE   DX 03CE IW MOV.  AL  4 IB MOV.  AL OUT-DX.
+\                 DX INC.          AX BX   XCHG.  AL OUT-DX. BX POP. END-CODE
+\    VEGA!       ( mode -- )  AX 6F05 IW MOV.  10 INT.  BX POP. END-CODE
+\  Regen size:  800s1   800s1   1000 1  1000 1  4000s2  4000s2  4000 2  1000 1
+\                                                       2000s4p 4000 4p 8000 2p
+\              8000 4p 9600 4p  9600 4p FA00s1     \\\  <= 1000 implies text
+
+: VID-SEG ( mode -- base ) DUP   7 < IF DROP B800 EXIT THEN
+                                 7 = IF B000 ELSE A000 THEN ;
+
+: ARE>   HERE - NEGATE ENDL ! ;
+
+         0B 1CVAR REGEN   0B ARE>    ( /256 )
+               8 C,  8 C, 10 C, 10 C, 20 C,  20 C, 20 C, 10 C,
+              20 C, 20 C, 20 C,
+         14 1CVAR L/ROW   14 ARE>            ( adjusted lines per row )
+               1 C,  1 C,  1 C,  1 C,  4 C,   4 C,  4 C,  1 C,
+               4 C,  2 C,  2 C, 10 C, 10 C,   8 C,  8 C, 0E C,
+              0E C, 10 C, 10 C,  8 C,
+         14 1CVAR M-MAP   14 ARE>    (  >0 = #bytes.across/char   <0=#planes )
+               2 C,  2 C,  2 C,  2 C,  2 C,   1 C,  1 C,  2 C,
+               4 C,  4 C,  2 C, -4 C, -4 C,  -4 C, -4 C, -2 C,
+              -4 C, -4 C, -4 C,  8 C,
+
+-1 USER-VAR BORDER?
+
+: -BORDER      ( --  wlc #cols wur #rows )
+               WLC WRC  OVER- 1+   WUR WBR  OVER- 1+ ; 
+
+: +BORDER      ( --  wlc #cols wur #rows )
+               WLC DUP 1- ABS MIN  WRC 1+ WMAIN    C@ MIN OVER- 1+   
+               WUR DUP 1- ABS MIN  WBR 1+ WMAIN 1+ C@ MIN OVER- 1+ ; 
+
+: W-PREP       THE BORDER? IF +BORDER ELSE -BORDER THEN ;
+
+: W#BYTES  ( window-descriptor  mode# -- d#bytes )
+               ABS >R   THE W# SWAP IS W# 
+               W-PREP  NIP * NIP
+               R@ M-MAP B->S ABS R> L/ROW DUP 1- IF 8 MAX THEN * U* 
+               ROT  IS W#  ;
+\ 
+: W-CHADR      ( row col -- seg ofst  lines/row  char/row  mem-map ) 
+               2>R   MODE@ T>R  J
+               CRT-BASE! CRT-BASE   R>  I' 4 < IF I' REGEN 256*  * THEN
+               I' L/ROW  WMAIN 1+ C@ 20 > IF DROP 8 THEN DUP>R  I' * J' * K + 
+               J M-MAP B->S DUP 0>  IF * ELSE DROP THEN + 
+               TR> M-MAP B->S DRDROP ;
+
+: VM-PREP      ( ds do --  ds do ss so lines/row ch/row m-map  #rows #cols )
+               W-PREP   ROT 2>R   SWAP W-CHADR   2R> ;
+
+: NEXT-SEG     U< IF 1000. D+ THEN ;   ( over 64K )
+: V->M         J' +  DUP J' NEXT-SEG  2over         2over  J' CMOVEL ;
+: VM+          J' +  DUP J' NEXT-SEG  2over 2000 +  2over  J' CMOVEL ;
+: MORE?        R> -1 +>R R@ SWAP >R ;
+: VP+          2>R K + 2R> ;
+
+CREATE 1|8   2 C, 1 C, 8 C,
+
+: W-SAVE        ( seg ofs -- )  
+                1000. D-
+                VM-PREP  2>R
+                DUP 0> IF DUP 2R> ROT * 2>R *  OVER  R> * SWAP 2>R ( d. s. l/r :: #r b/r #b )
+                          >R  2swap J' - R>
+                          DUP 1|8 CMEMBER? IF DROP   BEGIN V->M               MORE? WHILE VP+ REPEAT
+                       ELSE 4 = IF BEGIN V->M VM+           MORE? WHILE VP+ REPEAT
+\ *** pcJR only          ELSE BEGIN V->M VM+ VM+ VM+   MORE? WHILE VP+ REPEAT
+                               THEN
+                        THEN
+                ELSE ABS -ROT R> SWAP >R  * >R               ( d. s. m-m :: #r b/r #b )
+                    >R 2swap J' - R>   0 SET-RWM
+                  4+ IF  BEGIN  0 READ-PLANE V->M  1 READ-PLANE V->M 2 READ-PLANE V->M
+                        3 READ-PLANE V->M              MORE? WHILE VP+ REPEAT
+                     ELSE  BEGIN  0 READ-PLANE V->M
+                        1 READ-PLANE V->M              MORE? WHILE VP+ REPEAT
+                     THEN
+                THEN      DRDROP RDROP QDROP ;
+
+: M->V         2>R K' +   DUP K' NEXT-SEG  2r@ 2over 2R>         J' CMOVEL ;
+: MV+          2>R K' +   DUP K' NEXT-SEG  2r@ 2over 2R> 2000 +  J' CMOVEL ;
+
+: W-RESTORE     ( seg ofs -- )    1000. D-
+               VM-PREP  2>R
+               DUP 0> IF DUP 2R> ROT * 2>R *  OVER  R> * SWAP 2>R ( d. s. l/r :: #r b/r #b )
+                         T>R K' - TR>
+                         DUP 1|8 CMEMBER? 
+                         IF DROP   BEGIN M->V  MORE?  WHILE I' + REPEAT
+                         ELSE  4 = IF BEGIN M->V MV+  MORE?  WHILE I' + REPEAT
+\ *** pcJR only                    ELSE BEGIN M->V MV+ MV+ MV+ MORE?  WHILE I' + REPEAT
+                                   THEN
+                         THEN
+                      ELSE ABS -ROT R> SWAP >R  * >R               ( d. s. m-m :: #r b/r #b )
+                           T>R K' - TR>   0 SET-RWM
+                       4+  IF BEGIN 1 WRITE-PLANE M->V  
+                                    2 WRITE-PLANE M->V 
+                                    4 WRITE-PLANE M->V
+                                    8 WRITE-PLANE M->V   MORE?
+                              WHILE 
+                                    I' +
+                              REPEAT
+                            ELSE BEGIN 1 WRITE-PLANE M->V
+                                       2 WRITE-PLANE M->V MORE?  
+                                 WHILE
+                                       I' +
+                                 REPEAT
+                             THEN
+                       THEN      
+                       DRDROP RDROP QDROP ;
+
+4000 SEGMENT W-BUFFERS     W-BUFFERS @ 0 4000 0 FILLL
+
+: W-LEFT   0 IS BORDER?  W-BUFFERS @ 0 W-SAVE
+           W-BUFFERS @ 1 MODE@ NIP NIP 4 < IF 2* THEN W-RESTORE
+           WBR 1+ WUR DO I WRC CURSOR! BL WATRC CRT! LOOP WCURSOR@ CURSOR! ;
+
+: W-RIGHT  0 IS BORDER?
+           W-BUFFERS @ 1 MODE@ NIP NIP 4 < IF 2* THEN W-SAVE
+           W-BUFFERS @ 0 W-RESTORE
+           WBR 1+ WUR DO I WLC CURSOR! BL WATRC CRT! LOOP WCURSOR@ CURSOR! ;
+\
+
+0 [IF]  \ test code runs on load if you change the 0 to -1
+DECIMAL
+
+0 0 7  3  5  9 19 MAKE-WINDOW W1
+0 0 7  5 24 11 38 MAKE-WINDOW W2
+
+cr ." Type TEST to run the test code"
+
+: TEST
+          page                                             \ clear screen
+          W1 >WB -WATR                                     \ Open window W1
+         ." This text is written to window W1."            \ write this text to the window
+      cr ." Now save it and restore to another window"
+
+         W-BUFFERS @ 0 W-SAVE                              \ save the current window (W1)
+
+         W2 >W  -WATR                                      \ Open window W2
+         W-BUFFERS @ 0 W-RESTORE                           \ put the save contents into W2
+         WMAIN >W ;                                        \ return to the main HSForth window
+
+[THEN]

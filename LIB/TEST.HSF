@@ -1,0 +1,2 @@
+
+: test  ( n --)   begin  1- DUP while scr 1+! repeat  DROP ;

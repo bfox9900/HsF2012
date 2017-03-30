@@ -1,0 +1,11 @@
+
+
+code /string
+            ax pop.
+            dx pop.
+            ax bx sub.
+            dx bx add.
+            dx push.
+            ax bx xchg.
+            next.
+            end-code

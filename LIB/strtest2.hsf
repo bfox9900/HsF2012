@@ -1,0 +1,105 @@
+\ string test suite
+
+true [if]
+
+decimal
+\ \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+\ String test suite
+
+\ test strings
+255 pstring: q q :="                 12345678901234567890123456789012345678901234567890                "
+255 pstring: w w :="                      abcdefghijklmnopqrstuvwxy:zabcdefghijklmnopqrstuvwxyz                    "
+100 pstring: x x :=" string X"  ( smaller to check for errors)
+255 pstring: y y :=" string Y"
+ 32 pstring: anumber$
+
+
+
+: "iterations"  cr ." Performing 10,000 iterations..." ;
+
+: .results
+        .elapsed
+        cr ." Results:"
+        cr ." Q := " Q $.
+        cr ." W := " W $.
+        cr ." x := " x $.
+        cr ." y := " y $.
+        cr ;
+
+
+: cleaner
+        clrssp          \ clean the strings and create a big string and put it into Y
+        cr ." Performing:  w clean$ q clean$ +$  y $!"
+
+        "iterations"
+
+        timer-reset
+        10000 0
+        do
+           w clean$ q clean$  +$ y $!
+        loop
+        cr
+        .results ;
+
+
+
+: left-right-mid     \ take some pieces of string y and put them into X
+       "iterations"
+       10000 0
+        do
+           y 100 left$  60 right$   2 50 mid$  x $!
+       loop
+       .results ;
+
+
+: number-test
+        cr ." Performing:  65536 STR$ DUP X $!  Y $! "
+        "iterations"
+        timer-reset
+         timer-reset
+        10000 0
+        do
+            65536 str$ DUP X $! y $!
+       loop
+       .results ;
+
+
+\ Delimit the string w at the ":" position
+
+: delimit-test
+         cr ." Delimiting:  W clean$  dup [char] : $POS  left$  Y $! "
+      "iterations"
+       timer-reset
+       10000 0
+        do
+            W  dup [char] : $POS  left$  Y  $!  ( "abcdefghijklmnopqrstuvwxy:")
+        loop
+        .results
+;
+
+: Size-test
+        cr ." Testing 'X Y $xchg' $MOVE test. Should abort with error"
+        cr
+        cr  x y $xchg ;
+
+
+
+: $tester
+        PAGE
+        cr ." Using the following strings:"
+        Cr
+        cr ." Q := " Q $.
+        cr ." W := " W $.
+        cr ." x := " x $.
+        cr ." y := " y $.
+        cr
+        cleaner
+
+        left-right-mid
+
+        delimit-test
+
+ \       size-test
+;
+
+[then]

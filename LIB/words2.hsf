@@ -1,0 +1,161 @@
+\ words.hsf  pulled from original toolbox by B. Fox
+
+\ This project needed special attention so I pulled it from Jims Toolbox file
+\ Added colour words display.  I always thought that was a cool feature in Forth PC by Tom Zimmer
+
+\ Apr 2008 Complete re-design.  Since the context vocabulary is always kept in the
+\ ES register, we can simplify everthing to do with moving through the word
+\ lists.  No more seg:addr combos to deal with !! Ya!
+\ Jim Kalihan you were working too fast! ( original author HS/Forth )
+
+\ Also WORDS combines the functionality or WORDS and WORDS' from HS/Forth
+\ It shows all words if there is no string following it
+\ REMOVED: WORDS'
+
+\ Oct 13 2014 words was running past the end of the dictionary (past EXIT)  
+\             added extra test for a negative address or a cnt=0 to stop it. Works!
+
+
+[undefined] ltblue  [if] include color.hsf    [then]
+
+HEX
+
+: wrdcolor  ( code_address  -- )
+ \   DUP ." (" 3 .R ." ) "          debugging line
+    CASE
+        auser-vector OF  yellow  FG     ENDOF
+        auser-var    OF  CYAN   FG      ENDOF
+        aconstant    OF  LTBLUE  FG     ENDOF
+        acolon       OF  LTGRAY  FG     ENDOF
+        avar         OF  ltgreen FG     ENDOF
+        adoer        OF  LTmagenta FG   ENDOF
+
+      ( default: acode ) ltred   FG
+    ENDCASE ;
+
+
+\ all 'word' addresses are assumed to be in the ES segment
+HEX
+: cnt@  ( nfa -- cnt )
+        C@E 03F and ;
+
+\ special TYPE that types from the ES segment
+: es:type ( addr cnt -- )   bounds do  i C@E emit  loop ;
+
+\ from LATEST defined word, link back to the PREVIOUS word in the list
+: PREVWORD  ( adr -- adr_previous_word)
+            DUP CNT@ - CELL- 1-  ;
+
+
+variable totalwords
+: .totalwords
+            cr totalwords ? ." words displayed" cr ;
+
+
+: >txt      ( nfa -- txtadr cnt )    \ convert nfa address to start of the text with count
+            DUP CNT@ dup>R - r> ;    \ Warning: NFA is in the context vocabulary segment!! ES segment
+
+: txt>ca    ( off  --  code-address )
+            cell- @E @ ;
+
+: >wordcolor ( adr -- )
+            txt>ca wrdcolor ;
+
+\ given the name address of a word, print it to the output device
+:  .wordname    ( NFA-adr -- )           \ assumes ES segment is the context of the word
+            >txt ( adr n )           \ get the start of text addres
+            ES:TYPE ;                \ & type it
+
+: totalwords++   totalwords 1+! ;
+
+\ Same as .wordname but select the color before printing the word and keep a total
+:  color.word ( NFA-adr -- )         \ assumes ES segment is the context of the word
+            >txt ( adr n )           \ get the start of text address
+            over >wordcolor          \ set the color
+            ES:TYPE                  \ & type it
+            ltgray FG                \ return to the normal Foreground color
+            totalwords++ ;
+
+[UNDEFINED]  ?NEWLINE
+[IF] : ?NEWLINE    ( --)     OUT @  C/L @ 9 - > IF CR THEN ;   [THEN]
+
+
+: wordsheader
+         CR ." Color Scheme"
+         CR
+         yellow     FG ." USER-VECTOR "
+         CYAN       FG ." USER-VARIABLE "
+         LTBLUE     FG ." CONSTANT "
+         LTGRAY     FG ." COLON DEF. "
+         ltgreen    FG ." VARIABLE "
+         LTmagenta  FG ." CREATE/DOES> "
+         ltred      FG ." CODE "
+         cr
+         cr
+         50 ms      \ little delay to help see the color scheme :-)
+         LTGRAY     FG ;
+
+hex
+\ WORDS WORDS' **************************************************************
+
+[DEFINED] $FINDL
+
+[IF]
+
+: INWORD? ( adr $ -- ADR ? )         \ find $ in the Forth word at ADR.
+         over >txt  SWAP 1- SWAP     \ $findL needs one byte back (bug!?)
+         ( adr pad nadr len )
+         ES@  -rot OVER +  ( pad seg startadr stopadr) $FINDL NIP NIP  ;
+
+
+\ find all words in the vocabulary that match <text>
+\ SHOW words colour coded by their type in the dictionary
+: WORDS ( -- <text> )     \ if no text is given show ALL words
+        CR WORDSHEADER
+        CR
+        BL TEXT$ UPPER               \ we can only match upper case from dictionary
+        totalwords off
+        CONCUR                       \ CONTEXT @  CURRENT !
+        LATEST
+        BEGIN
+            TOP$ ( adr pad ) inword? ( adr ? )
+            TOP$ len 0= OR            \ if TOP$ is empty just show the word
+            if
+                ?NEWLINE             \ newline if we are past column 75
+                DUP color.word TAB
+                pausescreen
+            then
+            ( adr) PREVWORD          \ find the previous word in the list
+            DUP CNT@ 0=              \ is the previous word length=0?
+            over 0< or               \ had to add this second test because PREVWORD returned a neg. number with last word???
+        UNTIL
+        DROP COLLAPSE
+        .totalwords ;
+[else]
+
+\ simple non-searching, non-colored version
+: WORDS ( -- )
+        WORDSHEADER  CR
+        cr
+        totalwords off
+        CONCUR                  \ CONTEXT @  CURRENT !
+        LATEST ( adr)           \ set ES to DEFSEG,  @ address of newest word
+        BEGIN
+            DUP .wordname TAB
+            pausescreen
+            ( adr) PREVWORD            \ find the previous word in the list
+            DUP CNT@ 0=                \ is the previous word length=0?
+            over 0< or                 \ had to add this second test because PREVIOUS returned a neg. number with last word???
+        UNTIL
+        DROP
+        .totalwords ;
+
+[THEN]
+
+\ HS/Forth legacy
+\ SYNONYM WORDS'   words
+DECIMAL
+
+
+
+

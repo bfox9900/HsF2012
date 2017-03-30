@@ -1,0 +1,19 @@
+\ Window move operator allows a window to be repositioned
+\ Updated for HSF2012  Oct 6 2015
+
+[undefined] WWIDTH  [if]  : WWIDTH    WRC  WLC - ;  [then]
+[undefined] WHEIGHT [if]  : WHEIGHT   WBR  WUR - ;  [then]
+
+0 value theheight
+0 value thewidth
+
+
+: PutWindow ( Row col -- )
+             2DUP 2>R
+             WWIDTH  to thewidth
+             WHEIGHT to theheight
+             W# @ 2 IC!
+             W# @ 3 IC!
+             R> theheight +  W# @ 1 IC!
+             R> thewidth  +  W# @ C! ;
+

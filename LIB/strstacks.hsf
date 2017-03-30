@@ -1,0 +1,17 @@
+\ strSTACKS.hsf                                                        6/19/87
+
+: stack ( #items - )
+        create  0 ,                      \ stack pointer
+                dup ,                    \ number of items
+                ss-width * dup  allot    \ size
+
+        does> ;
+
+: push  ( $ stack-adr - )
+        @++  2- dup 0= abort" user string stack full"
+        over 2-! $! ;
+
+: pop   ( stack-adr - n )
+        dup 2@ = abort" user string stack empty"
+        @++ over 2+! i@ ;
+

@@ -1,0 +1,45 @@
+\ STACKS.HSF                                    Jim Kalihan         6/19/87
+\ updated Jan 8 2015
+\ change STEP to  ++@  my new name for it
+
+
+: stack ( #items -- )
+         create
+                cells dup  ( # of cells in the stack)
+                cell+ dup d,
+                allot 0 ,
+         does>  ;
+
+SYNONYM LIFO:  STACK      \ From Len Morgenstern.  I like this name (I added the colon which I like for compiling words)
+
+: stack-size  ( stack-addr -- n ) @ ;
+: stack-depth ( stack-addr -- n ) ++@ ;
+
+: ?underflow  ( stack-addr -- ) dup 2@ = abort" user stack empty" ;
+
+: push  ( n stack-adr - )
+        ++@ cell- DUP 0= ABORT" User stack full"
+        OVER 2-! I! ;
+
+: pop   ( stack-adr -- n ) ?underflow ++@ over 2+! i@ ;
+
+
+\ test code ........................
+0 [IF]
+       cr ." create stack call 'QQ'"
+       100 stack qq
+
+       99 qq push
+       100 qq push
+       101 qq push
+       cr ." Stack qq depth = " qq stack-depth .
+       cr ." Pop 3 items"
+       
+       cr qq pop . qq pop . qq pop .
+
+       cr ." Press any key to show underflow error"
+       KEY DROP
+
+       cr qq pop
+[then]
+

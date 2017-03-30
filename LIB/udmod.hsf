@@ -1,0 +1,5 @@
+\ ud/mod
+
+
+: UD/MOD      ( ud1 u2 -- u3 ud4) >R 0 R@ UM/MOD  -ROT R> UM/MOD ROT ;  \ 32/16->32 divide
+

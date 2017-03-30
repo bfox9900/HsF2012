@@ -1,0 +1,157 @@
+\ Foxshell    a handy working environment for HS/FORTH
+\ re-worked for HSF2000
+
+DECIMAL
+
+\ [undedined] .DIR/W   [if] include FOXSHELL.MAK to use this file"   ABORT [then]
+[undefined] PUSH      [if] include STACKs.hsf         [then]
+
+FORTH DEFINITIONS
+
+1 value SHELLPAGE#
+0 value EDITPAGE#
+2 value DOSPAGE#
+
+\ These windows are on page 1 TO AVOID CONFLICT WITH THE EDITOR
+\ You may have to change SHELLPAGE# to suite your needs.
+0  SHELLPAGE#  LTGRAY RED   FG&BG  00 00 01 79 MAKE-WINDOW WSTAT
+0  SHELLPAGE#  LTGRAY BLUE  FG&BG  02 00 24 79 MAKE-WINDOW WWORK
+0  SHELLPAGE#  LTGRAY BLACK FG&BG  01 71 01 79 MAKE-WINDOW WBASE
+
+: >WWORK   WWORK >W ;
+
+: SHELL-PAGE! ( n -- )
+       DUP WSTAT 12 I!
+       DUP WWORK 12 I!
+           WBASE 12 I! ;
+
+
+32 STACK SCRSTACK
+
+: SCRPUSH  SCRSTACK PUSH ;
+: SCRPOP   SCRSTACK POP  ;
+
+: SAVESCR
+          PAGE#@    SCRPUSH
+          THE W#    SCRPUSH ;
+
+: RESTSCR
+          SCRPOP  IS W#
+          SCRPOP  USE-PAGE
+          THE W# >W ;
+
+64 $VARIABLE WORKFILE$
+64 $VARIABLE CURR-DIR$
+64 $VARIABLE EDITOR$
+
+EDITOR$   :=" SZ.COM "
+CURR-DIR$ :=""
+WORKFILE$ :=" NEW.HSF"
+
+: .???  ." ???" ;
+
+: .dec     BASE @ >r  DECIMAL .  R> BASE ! ;
+
+: .THEBASE   SAVESCR
+             WBASE >W WIPE ." Base "  BASE @  .DEC
+             RESTSCR ;
+
+: .THEPATH    PATH0 $. ;
+: .CURRENT   THE CURRENT CFA .WORD ;
+: .CONTEXT   THE CONTEXT CFA .WORD ;
+: .THEDIR   DRIVE@ 64 + EMIT ." :\"  DRIVE@ DIR@ 25 RIGHT$ $. ;
+: .THEFILE  WORKFILE$ 14 RIGHT$ $. ;
+
+: .STATUSBAR
+    SAVESCR
+    WSTAT >W  WIPE
+    ." HS/FORTH Fox Shell  Dir=" .THEDIR   60 CTAB ." File=" .THEFILE
+    1 0 WCURSOR!
+." Current=" .CURRENT ."   " ." Context=" .CONTEXT ."   " ." Path=" .THEPATH
+   .THEBASE
+    RESTSCR ;
+
+: SHELL&STATS   system .STATUSBAR ;
+
+: HELLO
+    >INT10                          \ makes it easier to jump to video pages
+    SHELLPAGE# SHELL-PAGE!
+    .STATUSBAR
+    >WWORK WIPE CR ;
+
+\ re-defined to show on statusbar
+DECIMAL
+: DECIMAL  10 BASE ! .THEBASE ;
+: HEX      16 BASE ! .THEBASE ;
+: BINARY    2 BASE ! .THEBASE ;
+: OCTAL     8 BASE ! .THEBASE ;
+
+
+: FILE=
+    BL $TEXT WORKFILE$ $!
+    .STATUSBAR  >WWORK ;
+
+: ?WORKFILE     WORKFILE$ LEN 0= ABORT" Set working file with FILE=" ;
+
+: ?CHANGE-WORKFILE
+        PAD LEN 0>
+        IF
+            PAD WORKFILE$ $!
+        THEN .STATUSBAR ;
+
+: EDIT  BL TEXT
+        ?CHANGE-WORKFILE
+        SAVESCR
+        EDITPAGE# USE-PAGE
+        EDITOR$ BL$ $+ CURR-DIR$ $+ WORKFILE$ $+  SHELL&STATS
+        CLRSSP
+        RESTSCR ;
+
+: LOAD  BL TEXT PAD LEN 0=
+        IF
+        WORKFILE$
+        THEN DUP
+        CR ." Compiling..." $. <MFLOAD> PROMPT ;
+
+\ #########################################################################
+
+
+0 [if]  \ *** ALREADY INCLUDED IN HSF2000 ***
+
+\ some easy to use DOS commands.
+: //      1 TEXT                           \ like DOS" BUT a littler smarter
+          SAVESCR
+          PAD LEN 0=
+          IF
+               DOSPAGE# USE-PAGE
+               MAIN WIPE BLUE BG ." Type EXIT to return to HS/FORTH" CR
+               -WATR PAD SHELL
+          ELSE
+                PAD SHELL CURSOR@ WCURSOR!
+          THEN
+          .STATUSBAR
+          RESTSCR ;
+
+: A:    $" A:" SHELL&STATS  ;
+: B:    $" B:" SHELL&STATS ;
+: C:    $" C:" SHELL&STATS  ;
+: D:    $" D:" SHELL&STATS  ;
+: E:    $" E:" SHELL&STATS  ;
+: F:    $" F:" SHELL&STATS  ;
+: G:    $" G:" SHELL&STATS  ;
+
+: CD    BL TEXT  $" CD " PAD $+ SHELL&STATS ;
+
+\ Works like DOS DIR command in forth but gives sorted display
+: DIR
+      ." Sorting..."
+      search-attrib BL WORD  ?*.*  READ-DIR
+      CR ." Directory for " .THEDIR
+      CR .DIR/W   .STATUSBAR ;
+
+: BYE   C-80  MAIN WIPE  BYE ;
+
+' HELLO IS PAGE                         \ returns FOXshell screen
+
+EXIT
+

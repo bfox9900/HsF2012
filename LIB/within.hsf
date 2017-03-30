@@ -1,0 +1,26 @@
+\ WITHIN? re-coded using Assembler
+
+CODE WITHIN?
+  <%  31 C0 59 5A 39 DA 7F 05  39 CA 7C 01 48 89 C3 AD 97 FF 25 %>
+END-CODE
+
+: CLIP  ROT MIN MAX ;
+
+EXIT
+
+\ machine code for the above
+CODE WITHIN?   ( n lo hi -- flag )
+\  Returns TRUE if  lo <= n <= hi . Signed comparison
+                AX AX XOR.              \ clear AX as flag register
+                CX POP.                 \ lo => CX
+                DX POP.                 \ n  => DX
+                DX BX CMP.              \ compare n and hi
+                JG FALSE                \ if DX>BX, jump to FALSE
+                DX CX CMP.              \ compare n and lo
+                JL FALSE                \ if DX<CX, jump to FALSE
+>>> TRUE        AX DEC.                 \ Set AX register to -1 (true)
+>>> FALSE       BX AX MOV.              \ move AX to BX (top of HSF STACK)
+    END-CODE
+
+
+

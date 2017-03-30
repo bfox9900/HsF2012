@@ -1,0 +1,80 @@
+\ stringtst.hsf
+
+100 $variable q  q :=" 1234567890"
+100 $variable w  w :=" 098765432"
+100 $variable s  s :=" abcdefghij"
+  1 $variable h  h :=""
+
+\ standard Forth style compare routine. Adapted from Win32For
+CODE COMPARE    ( adr1 len1 adr2 len2 -- n )
+               2 cells +[bp] di     mov.         \ push HSF registers to rstack
+               1 cells +[bp] si     mov.
+                    ( tos = bx )                 \ bx = len2
+                     si             pop.         \ si = adr2
+                     cx             pop.         \ cx = len1
+                     di             pop.         \ di = adr1
+
+                     ax     ax      xor.         \ set default to 0 (strings match)
+
+                     cx     bx      cmp.         \ compare lengths
+                     je     compare:             \ jump if equal to compare:
+                     ja     greater:             \ jump if above to greater.
+                     ax     -1   iw mov.         \ if len1 < len2, ax = -1
+                     jmp    compare:
+
+@@ greater:          ax      1   iw add.        \ if len1 > len2, ax = 1
+                     cx     bx      mov.        \ and use shorter length
+
+@@ compare:          repnz:       cmpsb.        \ compare the strings
+                     je  done:                  \ if equal, return default
+                     jns diff:
+
+                     ax     -1  iw  mov.        \ if str1 < str2, ax = -1
+                     jmp  done:
+
+@@ diff:             ax   1      iw mov.        \ if str1 > str2, return 1
+
+@@ done:             bx   ax        mov.
+                  di 2 cells +[bp]  mov.        \ restore HSF registers
+                  si 1 cells +[bp]  mov.
+                     next.
+END-CODE
+
+
+: $compare ( adr$1 adr$2 -- -n:0:n )
+        count rot count compare ;
+
+cr q w $compare .
+cr q s $compare .
+cr s q $compare .
+cr s w $compare .
+cr w h $compare .
+cr h w $compare .
+q w $!
+cr q w $compare .
+
+
+exit
+
+
+
+: sgn ( n -- -1/0/1 )
+     dup 0=
+     IF EXIT THEN  0< 2* 1+ ;
+
+: -text ( c_addr1 u c_addr2 -- n )
+     swap bounds
+     DO
+            dup c@ I c@ =
+            if  1+
+            ELSE  c@ I c@ - leave
+            THEN
+     LOOP sgn ;
+
+: compare  ( c_addr1 u1 c_addr2 u2 -- n )
+     rot 2dup swap - >r min swap -text dup
+     IF  rdrop
+     ELSE  drop r> sgn
+     THEN ;
+
+

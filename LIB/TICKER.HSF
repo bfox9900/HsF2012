@@ -1,0 +1,28 @@
+\ ticker.hsf    A crude real time "ticker" for HS/FORTH      11OCT94  FOX
+
+\ I am using the BIOS data area to provide faster access to the time
+\ TIME@ uses an INT instruction which FORTH does not need)
+\ The smallest time delay is approx. 55 mS
+
+FIND YIELD 0= ?( : YIELD ; )
+
+HEX 0040 CONSTANT BIOS_DATA               \ BIOS data area segment
+HEX 006C CONSTANT DOS_TIME                \ time of day address
+
+: TOD@ ( -- n ) BIOS_DATA DOS_TIME @L  ;       \ I only read 2 bytes
+
+DECIMAL
+: TICK
+        TOD@
+        BEGIN
+           DUP TOD@ <>
+        UNTIL
+        DROP ;
+
+: TICKS  ( n -- ) 0 DO TICK LOOP ;
+
+: 1SEC      18 TICKS ;
+
+: SECONDS   0 DO 1SEC LOOP ;
+
+

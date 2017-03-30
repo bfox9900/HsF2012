@@ -1,0 +1,74 @@
+\    Camel Forth 8086, re-written for HsForth BJF
+
+\ ;Z SKIP   c-addr u c -- c-addr' u'
+\ ;Z                          skip matching chars
+\ ; Although SKIP, SCAN, and S= are perhaps not the
+\ ; ideal factors of WORD and FIND, they closely
+\ ; follow the string operations available on many
+\ ; CPUs, and so are easy to implement and fast.
+\    head skip,4,'SKIP',docode
+\        xchg bp,sp     ; save regs
+\        push es
+\        push di
+\        push cx
+\        xchg bp,sp
+\        mov ax,ds       ; data segment
+\        mov es,ax
+\        mov ax,bx       ; char
+\        pop cx          ; count
+\        pop di          ; adr
+\        jcxz skipdone
+\        repe scasb
+\        jz skipdone     ; CX=0, DI ok.
+\        inc cx          ; mismatch found,
+\        dec di          ;  adjust CX,DI
+\ skipdone:
+\        push di         ; updated adr
+\        mov bx,cx       ; updated count
+\        xchg bp,sp      ; restore regs
+\        pop cx
+\        pop di
+\        pop es
+\        xchg bp,sp
+\        next
+
+CODE SKIP       ( adr len char -- adr' len' ) \ skip leading chars "char" in string
+                dx es mov.              \ save es: in dx register
+                ds push.                \ push the current ds: register (data segment)
+                es pop.                 \ & pop it into es:
+
+                ax bx mov.
+                cx pop.
+                di pop.
+                jcxz 1:
+                repe: scasb.
+                je  1:
+                cx  inc.
+                di  dec.
+@@ 1:           
+                di push.                 \ updated adr
+                bx cx mov.               \ updated count
+                es dx mov.               \ restore ES value
+                next.
+end-code
+
+CODE SCAN     ( adr len char -- adr' len' )     \ scan string for 'c', return new string adr&len
+                dx   es  mov.                    \ save es: in dx register
+                ds      push.                    \ push the current data segment (ds)
+                es       pop.                    \ & put in into es
+
+                ax    bx mov.                    \ ax holds the char
+                cx       pop.                    \ cx has the len
+                di       pop.                    \ di has address
+                jcxz done.                       \ if len=0 exit
+
+                repne: scasb.                    \ let 'er rip!
+                jnz    done:
+                cx       inc.
+                di       dec.
+@@ done.
+                di      push.
+                bx   cx  mov.
+                es   dx  mov.                    \ restore es segment
+                next.
+END-CODE

@@ -1,0 +1,124 @@
+HEX    ( VOCAB83      Harvard Softworks, HS/FORTH Ver 3.40  JTC 10/10/87 )
+
+\ This is original HSForth code re-formatted by B Fox for clarity
+\ it is loaded onto the HSForth bare Kernel and so must remain non-ANS
+
+-FIND FORTH-83 ?( ."   VOCAB83 must load before FORTH83. " DDROP EXIT )
+
+SYNONYM IMVOC NEXT     \ so ASSEMBLER EDITOR and SOUND are not made IMMEDIATE
+
+8 CONSTANT #VOCS
+
+VARIABLE PREVOC   PREVOC 0!
+
+CREATE <CONTEXT>  PFA-OF FORTH , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+
+AT: CXT83   <CONTEXT> ;
+
+AT: CXT83@  <CONTEXT> @ ;
+
+AT: CXT83!  <CONTEXT> ! ;
+
+: $FIND-83 ( $ --  pfa immbits ?)         \ factored this out for the cross-compiler
+        DUPC@
+        PREVOC 0!
+        IF
+             >R CONTEXT 0010 + CONTEXT
+             DO
+                  I @  DUP PREVOC @ <> OVER AND
+                  IF
+                      DUP PREVOC !
+                      J SWAP <FIND> ?DUP
+                      IF
+                         DRDROP RDROP ROT @E 2+ -ROT EXIT
+                      THEN
+                   ELSE DROP
+                  THEN
+              2 +LOOP
+              RDROP 0
+
+         ELSE
+                DROP  [ CFA' [ 0A + ] LITERAL 0C0 -1
+        THEN  ;
+
+: FIND-V83   BL WORD $FIND-83 ;   \ this is the same as the original now
+
+
+SEG-SIZE @                        \ get the current seg-size onto the stack
+
+400 IS SEG-SIZE                   \ set a new seg-size
+VOCABULARY ONLY   ONLY DEFINITIONS
+
+SEG-SIZE !                        \ re-store the original seg-size
+
+PFA-OF ONLY  <CONTEXT> 2I!
+PFA-OF FORTH <CONTEXT> !
+
+: ALSO          LISTS @ CONTEXT DDUP 2+  #VOCS 2- 2* <CMOVEL ;
+
+: VPOP          CONTEXT 2+ CONTEXT       #VOCS 2- 2*  CMOVE  ;
+
+: +ONLY         ' ONLY CONTEXT ! ;
+
+: SEAL
+            CONTEXT  #VOCS 1- 2* I@  #VOCS 0
+            DO
+                DUP CONTEXT I 2* I@ =
+                IF CONTEXT I 2* + 0!
+                THEN
+            LOOP
+            DROP ;
+
+CFA' +ONLY DUP DUP  PFA-OF SEGMENT !
+ ' SYNONYM 14 + !     \  first word in <VOC79> ***
+
+  PFA-OF .WORD 36 I!        \                        ***
+
+: VOCABULARY    THE CONTEXT  THE CURRENT   VOCABULARY   HERE 6 - 0!
+                 IS CURRENT  IS CONTEXT ;
+
+: SEGMENT       THE CONTEXT  THE CURRENT ROT  SEGMENT IS CURRENT  IS CONTEXT ;
+
+SYNONYM FORGET   FORGET
+SYNONYM DEFINITIONS DEFINITIONS
+SYNONYM CODES    CODES
+SYNONYM LISTS    LISTS
+SYNONYM STACKS   STACKS
+SYNONYM FORTHS   FORTHS
+SYNONYM ONLY-SEG ONLY-SEG
+SYNONYM ONLY     ONLY
+SYNONYM FORTH    FORTH
+
+FIND WORDS  ?( SYNONYM WORDS  WORDS  )
+FIND WORDS' ?( SYNONYM WORDS' WORDS' )
+
+: ORDER
+        8 SPACES
+        CONTEXT #VOCS cells + CONTEXT
+        DO
+                I @ ?DUP
+                IF cell- .WORD
+                THEN
+        2 +LOOP
+        8 SPACES
+        THE CURRENT  cell- .WORD ;
+
+HERE ]  CONTEXT #VOCS cells ERASE
+        DUP CONTEXT ! CONTEXT #VOCS 1- 2* I! EXIT [ OKLW
+
+CA' CXT83  CFA' CONTEXT     !
+CA' CXT83@ CFA' CONTEXT 4 - !
+CA' CXT83! CFA' CONTEXT 2 - !
+
+ONLY FORTH DEFINITIONS
+
+CFA' FIND-V83 IS -FIND
+CFA' ONLY cell- !
+CFA' ONLY 4+ 0!
+
+FIND HASH-ON ?( BEHEAD' VOCABULARY   BEHEAD' FORGET  )
+BEHEAD' DEFINITIONS  BEHEAD' VOCABULARY   BEHEAD' SEGMENT   BEHEAD' FORGET
+BEHEAD' CODES        BEHEAD' LISTS        BEHEAD' STACKS    BEHEAD' FORTHS
+BEHEAD' FORTH        BEHEAD' ONLY         BEHEAD' ONLY-SEG  BEHEAD' ALSO
+DECIMAL
+

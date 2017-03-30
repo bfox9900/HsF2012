@@ -1,0 +1,402 @@
+\ toolbox.hsf      extensions & additions by Brian Fox  OCT 1992, Mar 2005
+\ based on toolbox 10/3/85     copyright 1983,1984,1985  HARVARD SOFTWORKS
+\
+
+ONLY FORTH DEFINITIONS
+
+DECIMAL
+27 CONSTANT <ESC>
+
+: ?CR ( ? --) IF CR THEN ;
+
+HEX
+: <SDEPTH>     CONSOLE  3C EMIT  DEPTH 0 0 D.R 3E EMIT ;
+
+: OK-OFF  CFA' CONSOLE  TO PROMPT ;
+
+: OK-ON   CFA' <OK>     TO PROMPT ;
+
+: SDEPTH  CFA' <SDEPTH> TO PROMPT ;
+
+\ ********************************************************************
+6 VALUE SCREENDELAY
+
+: PAUSESCREEN
+        SCREENDELAY MS
+        ?TERMINAL
+        DUP 0>
+        IF
+           EKEY>CHAR <ESC> =
+           IF TRUE ABORT" ESC pressed"
+           ELSE  BEGIN ?TERMINAL UNTIL
+           THEN
+        ELSE DROP
+        THEN  ;
+
+\ DUMP utility ************************************************
+
+: ##.    SPACE  S->D   <# # # #> TYPE ;
+
+: DUMPL ( seg offset n -- )
+    BASE @ >R
+    HEX
+    ROT >R  0    ( seg ofst   #b --   )
+    DO
+        CR DUP I + DUP 0 6 D.R
+        2 SPACES  DUP
+        8 0   DO  K OVER I IC@L  ##.  LOOP    DROP SPACE  DUP 8 +
+        8 0   DO  K OVER I IC@L  ##.  LOOP    DROP 3 SPACES
+
+        10 0  DO  K OVER I IC@L DUP  BL < OVER  [CHAR] ~ > OR
+                  IF DROP [CHAR] .  THEN  EMIT
+              LOOP  DROP
+         PAUSESCREEN
+    10 /LOOP
+    RDROP  DROP
+    CR
+    R> BASE ! ;
+
+: DUMP ( adr n -- ) LISTS @ -ROT DUMPL ;
+
+
+
+\ code patching & code viewing *******************************************
+: !% ( adr val - adr+1 )
+        OVER CODES @ SWAP C!L 1+  ; ( for alterations )
+
+: .HEAD
+        CODES @  OLDC @ HERE-C 2DUP U. - DUMPL ; ( dump current )
+
+CA' CREATE CONSTANT ACOLON
+
+HEX
+: (.CODE) ( adr -- )
+        CR TAB
+        100 0
+        DO
+           CODES @ OVER I + C@L DUP
+           0AD = IF
+                     CR TAB ."  NEXT."
+                     DROP
+                     LEAVE
+                   ELSE
+                     ##.
+                   THEN
+                   OUT @ 20 > IF CR TAB THEN
+         LOOP ;
+
+: .CODE' ( -- <code word> )          \ hex dump a word's code
+         SCREENDELAY >R
+
+         200 TO SCREENDELAY
+         CODES @  [COMPILE] CA'
+         DUP ACOLON =
+         IF CR  ." Colon definition, not CODE"
+            DROP
+         ELSE
+             100 DUMPL
+         THEN
+
+         R> TO SCREENDELAY ;
+
+
+\ WORDS WORDS' **************************************************************
+: NFA->CA  ( nfa -- ca )  PFA CFA @ ;
+
+: WORDS
+        CR
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+            OUT @ 0> IF TAB THEN
+            R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+            DUP  OUT @ + C/L @ > ?CR TYPEL SPACE
+            PAUSESCREEN
+            3 - DUP  1+
+        0= UNTIL
+        DROP RDROP ;
+
+\ we need to install 'WORDS' in the ROOT vocabulary
+\ ALSO ROOT DEFINITIONS
+
+\ SYNONYM WORDS WORDS
+
+\ ONLY FORTH DEFINITIONS
+
+
+ [DEFINED] $FINDL [IF]
+
+\ find all words in the vocabulary that match <text>
+: WORDS' ( -- <text> )
+        CR
+        BL TEXT
+        PAD UPPER          \ we can only match upper case from dictionary
+        PAD
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+            R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+            T>R PAD R> R@ 1- R@ I' + $FINDL NIP
+            PAD C@ 0= OR
+            IF THE OUT 0>
+                IF TAB THEN  DR> DUP  OUT @ + C/L @ > ?CR TYPEL SPACE
+                PAUSESCREEN
+            ELSE DRDROP DROP
+            THEN  3 - DUP  1+
+        0= UNTIL
+        2DROP RDROP ;
+ [ENDIF]
+
+\ stack viewer ***********************************************************
+: .S
+        DEPTH DUP
+        IF SP@ S0 4-
+           STACKS @ ES!
+           DO
+                I @E 0 D.
+           -2 +LOOP
+        ELSE ." Empty stack "
+        THEN
+        CR DROP ;
+
+
+TRUE TO TOOLS            \ ANS flag indicates that Tools are loaded in the system
+
+
+\ trace utility ***********************************************************
+
+: .T
+        DEPTH DUP
+        IF      SP@ S0 2- SWAP
+                STACKS @ ES!
+                DO
+                  I @E 0 D.
+                2 +LOOP
+         ELSE ." Empty stack "
+         THEN   CR DROP ;
+
+: .RS  ( rp@ >4 -- )
+        2DUP >
+        IF      THE BASE -ROT HEX
+                DO
+                   STACKS @ I @L U.
+                2 /LOOP
+                TO BASE
+        ELSE 2DROP
+        THEN ;
+
+: .WRDE      ES@ SWAP .WORD ES!   ;
+
+: <TRACK>    SPACE .WRDE SPACE .S ;
+
+: TRACK      OLDL @  [COMPILE] LITERAL  COMPILE  <TRACK>  ;  IMMEDIATE
+
+
+WARNING OFF
+
+: ?COLON        DUP@   ACOLON  = ;
+
+: ?KIND
+        CREATE [COMPILE] CFA' ,
+        DOES> @ OVER =
+        IF DROP -1
+        ELSE 0
+        THEN ;
+
+?KIND ?_EXIT    EXIT
+
+?KIND ?BRANCH   BRANCH
+?KIND ?0BRANCH  0BRANCH
+?KIND ?<>BRANCH <>BRANCH
+
+?KIND ?<LOOP>   <LOOP>
+?KIND ?</LOOP>  </LOOP>
+?KIND ?<+LOOP>  <+LOOP>
+?KIND ?<.">     <.">
+?KIND ?<ABORT"> <ABORT">
+?KIND ?<,">     <,">
+?KIND ?LIT      LIT
+?KIND ?DLIT     DLIT
+
+VARIABLE MARGIN
+VARIABLE IP
+VARIABLE HLD=
+VARIABLE ?STEP
+
+: >C1D     1D  THE OUT  - SPACES ;
+: >C33     33  THE OUT  - SPACES ;
+
+: INDENT   RP@ MARGIN @ - SPACES ;
+
+: PAD+   HLD HLD= @&!   B0 LISTS 4+ +! ;
+: PAD-                 -B0 LISTS 4+ +!   HLD= HLD @&! ;
+
+: .BRANCH     3C EMIT @++ 0 .R 3E EMIT ;
+
+CREATE   TRACE-DEPTH  3 ,
+CREATE   RECENT       0 ,
+
+: TR.S
+    ES@ >R >R >R PAD+ >C1D                  RP@ 06 - 0A    .RS
+    33 THE OUT - DUP 0>
+    IF  SPACES  ELSE   DROP CR  33 SPACES    THEN .S
+      ?STEP @
+       IF
+          BEGIN
+             ." E> " QUERY THE SPAN 2 <>  THE TIB @ 3E45 <> OR
+          WHILE
+             INTERPRET CR
+          REPEAT
+       THEN    PAD- R> R> R> ES! ;
+
+: .STRING
+        CH" EMIT SPACE 2+ COUNT 2DUP TYPE CH" EMIT  +  ;
+
+: TRACE'
+
+RP@   2+  MARGIN !    -2      [COMPILE]  CFA'
+CR  >C1D  ." Return Stack" >C33 ." Parameter Stack" CR
+BEGIN
+ ?COLON  IF
+ ?<.">     IF INDENT 2E EMIT   .STRING DUP@ CR ELSE
+ ?<ABORT"> IF INDENT ." ABORT" .STRING SWAP
+              IF ."   ok " DROP QUIT ELSE CR DUP@  THEN
+         ELSE INDENT ." :" DUP .WRDE TR.S
+              RECENT @ OVER U<
+              RP@ MARGIN @ -   TRACE-DEPTH @ 2* < AND
+              IF SWAP 2+ >R @++
+              ELSE SWAP IP ! EXECUTE CR IP  @ @++
+              THEN
+        THEN THEN
+( primitive )
+       ELSE      INDENT SPACE SPACE DUP                                ELSE
+
+  ?<,">      IF  8 EMIT 8 EMIT 8 EMIT 8 EMIT    24 EMIT DUP 2+  SWAP
+                                                        .STRING DUP@   ELSE
+  ?0BRANCH   IF  PAD+  .BRANCH SWAP DUP .                 PAD-
+                                     IF 2+ ELSE DUP@ + THEN     DUP@   ELSE
+  ?<>BRANCH  IF  PAD+  .BRANCH SWAP DUP . 3 PICK DUP . =  PAD-
+                               IF NIP 2+ ELSE DUP@ + THEN       DUP@   ELSE
+  ?BRANCH    IF  PAD+  .BRANCH             PAD- DUP@ +          DUP@   ELSE
+  ?<LOOP>    IF  SPACE       <LOOP>  [ 08 , ]       4+
+                             BRANCH  [ 06 , ]   @++ +          DUP@   ELSE
+  ?<+LOOP>   IF  SPACE  SWAP <+LOOP> [ 08 , ]       4+
+                             BRANCH  [ 06 , ]   @++ +          DUP@   ELSE
+
+  ?</LOOP>   IF  SPACE  SWAP </LOOP> [ 08 , ]       4+
+                             BRANCH  [ 06 , ]   @++ +          DUP@   ELSE
+
+  ?LIT       IF  @++        SPACE   DUP  PAD+  . PAD- SWAP     @++   ELSE
+
+  ?DLIT      IF  2+ DUP  2@  SPACE  2DUP  PAD+ D. PAD- ROT  2+  @++   ELSE
+
+  ?_EXIT     IF     DROP R>                                     DUP@   ELSE
+                 SWAP IP !   SPACE  EXECUTE    IP @             @++
+             THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN  TR.S
+        THEN PAUSESCREEN
+      OVER 0=
+UNTIL
+2DROP ;
+
+
+
+: TRACE
+        ?STEP OFF
+        TRACE' ;
+
+: SSTRACE
+          1 ?STEP  !
+          TRACE' ;
+
+WARNING 1-!
+
+: .D            BASE @ SWAP DECIMAL . BASE ! ;
+
+
+\ Define the kinds of words to find
+CREATE BRANCHES
+        5 ,
+        CFA' BRANCH  ,
+        CFA' 0BRANCH  ,
+        CFA' <LOOP>  ,
+        CFA' </LOOP>  ,
+        CFA' <+LOOP> ,
+
+CREATE STRINGS
+        3 ,
+        CFA' <."> ,
+        CFA' <ABORT"> ,
+        CFA' <,">    ,
+
+CREATE LITS
+        2 ,
+        CFA' LIT   ,
+        CFA' DLIT  ,
+
+CREATE COMPILES
+        2 ,
+        CFA' COMPILE ,
+        CFA' [COMPILE] ,
+
+CREATE $"NAMES
+        0 C, 2 C,
+        CHAR . C,
+        CHAR " C,
+        6 HERE ," ABORT" C!
+        CHAR " C,
+        2 C,
+        CHAR , C,
+        CHAR " C,
+        2 C,
+        CHAR , C,
+        CHAR " C,
+
+\ changed from "show" in hs/forth to match industry norms
+: SEE
+    FIND-LPA DUP NFA C@E SWAP  @E  DUP@   CA' CREATE -
+    IF  CR ." CODE " DUP .WORD
+        CR   (.CODE)
+        CR ." END-CODE"
+        CR
+        DROP
+    ELSE
+        DUP
+        CR ." : " .WORD CR 
+        2+
+        BEGIN
+             DUP@  OUT @ 48 > ?CR
+             DUP CFA' EXIT =
+             IF ."  ; "
+                2DROP 40 AND
+                IF ." IMMEDIATE"
+                THEN EXIT               \ we get out here in an unstructured way
+             THEN
+             DUP BRANCHES MEMBER?
+             IF  .WORD
+                 @++ 2/ SPACE DUP .D   0< ?CR 2+
+
+             ELSE  DUP STRINGS MEMBER?  ?DUP
+                   IF  $"NAMES SPACE .NTH$ SPACE DROP
+                       2+ DUP 4- @ COMPILES MEMBER?   NOT
+                       IF COUNT 2DUP TYPE +  CH" EMIT
+                       THEN
+                   ELSE  DUP LITS MEMBER?
+                         IF SPACE CFA' LIT =
+                            IF   @++  . 2+
+                            ELSE 2+ DUP 2@ D. 4+
+                            THEN
+                          ELSE    DUP CFA' <DO> = ?CR .WORD 2+
+                          THEN
+                    THEN
+             THEN
+        AGAIN
+    THEN ;
+
+TRUE TO TOOLS       \ tell the system the tools are loaded
+
+BEHEAD'' ?COLON .BRANCH
+BEHEAD'' BRANCHES $"NAMES    BEHEAD' .RS  BEHEAD' ##.
+BEHEAD' TR.S   BEHEAD' TRACE'   BEHEAD' U.8R
+DECIMAL

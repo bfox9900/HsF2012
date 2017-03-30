@@ -1,0 +1,177 @@
+\ sound.hsf  complete re-write B Fox
+
+\ replaced assembler with simple Forth words
+\ added music adjectives to control things. Waayy better!
+
+HEX
+\ PC speaker hardware control (requires giveio or DOSBOX for windows operation)
+ 042 constant fctrl
+ 043 constant tctrl
+ 061 constant sctrl
+ 0FC constant smask
+ 0B6 constant spkr
+
+: sing      ( -- ) sctrl pc@               03 or  sctrl pc! ;
+: silence   ( -- ) sctrl pc@   smask and   01 or  sctrl pc! ;
+
+HEX
+: tone     ( divisor -- )
+            ?dup                        \ check for non-zero input
+            if   spkr  tctrl pc!        \ enable PC speaker
+                 dup   fctrl pc!        \ load low byte
+                 cswap fctrl pc!        \ load high byte
+                 sing
+            else
+                 silence
+            then ;
+
+DECIMAL
+1193180. 2constant clock                                 \ internal oscillator freq. MHz x 10
+
+: Hz ( freq -- divisor) clock rot UM/MOD NIP  ;          \ convert Freq to osc. divisor
+
+\ duration control variables and values
+variable on_time
+variable off_time
+variable feel                                            \ controls the on/off time ratio
+
+4000 60 m* 2constant timebase                            \ 240,000 = 1 measure at 60 BPM
+                                                         \ 4 quarter notes (4000 ms)* 60 Beats/min
+
+60 value tempo
+
+\ BPM  means "beats per minute"
+: bpm>ms    ( bpm -- ms) timebase rot um/mod nip ;       \ convert musician's time to real time
+
+: wholenote  ( -- ms )  tempo bpm>ms ;
+: thenote    ( -- ms ) on_time @ off_time @ + ;
+
+: play  ( divisor -- )  tone on_time @ ms   silence  off_time @ ms ;
+
+: expression ( ms n --)                                  \ calculate ontime & offtime ratio
+           over swap -   ( -- ms on_time )               \ on_time+off_time must = 1 note value in ms
+           tuck -        ( -- on_time off_time )
+           off_time !
+           on_time ! ;
+
+: note!    ( ms -- )  feel @ expression ;
+
+\ Hi level commands
+: BPM       ( bpm -- )                                  \ set the tempo in beats per minute
+            to tempo
+            tempo bpm>ms note! ;
+
+: tuner     ( -- ) begin   440 hz tone  key? until silence ;
+
+: 5%       ( -- ) 5 / ;
+: 10%      ( n -- n ) 10 / ;
+: 20%      ( n -- n ) 20 / ;
+: 50%       2/ ;
+
+: legato      wholenote  20%  50% 50%  feel ! ;        \ long ontime, short offtime
+: staccatto   wholenote  5%  50%    feel ! ;           \ short ontime, longer offtime
+: Marcato     wholenote  10% 50%    feel ! ;
+
+: LARGO       45 BPM ;
+: ADAGIO      66 BPM ;
+: ANDANTE     80 BPM ;
+: MODERATO   108 BPM ;
+
+: AllEGRO-MODERATO  125 ;
+: ALLEGRO    155 BPM ;
+: VIVACE     175 BPM ;
+: PRESTO     200 BPM ;
+
+: RIT.       THENOTE DUP 20% +  NOTE! ;
+: ATEMPO     tempo BPM ;
+
+: dotted     ( --  ) on_time @ off_time @ +  dup 2/ + note! ;
+
+: 1/1      wholenote  NOTE! ;
+: 1/2      wholenote 2 / note! ;
+: 1/2.     1/2  dotted ;
+: 1/4      wholenote 4 / note! ;
+: 1/4.     1/4 dotted ;
+: 1/8      wholenote 8 / note! ;
+: 1/8.     1/8 dotted ;
+: 1/16     wholenote 16 / note! ;
+: 1/32     wholenote 32 / note! ;
+
+variable pitch
+
+\ note contructor.
+: note:    create  hz ,
+           does>  @ pitch @ + play ;
+
+vocabulary NOTES
+
+NOTES definitions
+
+\ freq     Note    freq    Accidental
+\ -------------    ------------------
+  110 note: A2     117 note: A#2
+  123 note: B2
+
+  131 note: C3     139 note: C#3
+  147 note: D3     156 note: D#3
+  165 note: E3
+  175 note: F3     185 note: F#3
+  196 note: G3     208 note: G#3
+  220 note: A3     233 note: A#3
+  247 note: B3
+
+  262 note: C4     277 note: C#4
+  294 note: D4     311 note: D#4
+  330 note: E4
+  349 note: F4     371 note: F#4
+  392 note: G4     415 note: G#4
+  440 note: A4     466 note: A#4
+  494 note: B4
+
+  523 note: C5     554 note: C#5
+  587 note: D5     622 note: D#5
+  659 note: E5
+  698 note: F5     740 note: F#5
+  784 note: G5     831 note: G#5
+  880 note: A5
+  987 note: B5
+ 1046 note: C6
+
+Only Forth also notes also Forth Definitions
+\ demo code
+true [if]
+
+Moderato                      \ set the tempo
+   legato                     \ set the expression
+
+: twinkle
+            Legato
+            1/8  A3 A3 E4 E4 F#4 F#4   1/4 E4
+            1/8  D4 D4 C#4 C#4  B3 B3  1/4 A3
+            staccatto
+            1/8  E4 E4 D4 D4 C#4 C#4   1/4 B3
+            Legato
+            1/8  E4 E4 D4 D4 C#4 C#4   1/4 B3
+            Marcato
+            1/8  A3 A3 E4 E4 F#4 F#4   1/4 E4
+            1/8  RIT. D4 D4  RIT. C#4 C#4  RIT. B3 B3   RIT. 1/2. A3 ;
+
+: variation
+            Legato
+            1/8  A3  c#4  b3  a3  E4  a3  c#4 e4
+                 f#4 a4   g#4 f#4 e4  a3  C#4 e4
+                 d4  f#4  e4  d4  c#4 e4  d4 c#4
+                 b3  a4   b4  f#4 e4  f#4 e4 f#4
+
+                 C#4 e4   c#4 e4  d4  e4  d4  e4
+                 C#4 e4   c#4 e4  d4  b3  d4  e4
+                 C#4 e4   c#4 e4  d4  e4  d4  e4
+                 C#4 e4   c#4 e4  d4  b3  d4  e4
+
+                 A3  c#4  b3  a3  E4  a3  c#4 e4
+                 f#4 a4   g#4 f#4 e4  a3  C#4 e4
+                 d4  f#4  e4  d4  c#4 e4  d4 c#4
+                 rit. b3  e4  rit.  f#4 g#4
+                 rit. a4  g#4
+                 1/2 a4  ;
+[then]

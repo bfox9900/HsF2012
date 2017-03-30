@@ -1,0 +1,10 @@
+\ integer square root in Forth.  Not fast but small
+
+: sqrt ( n -- n )
+         -1 TUCK
+         DO
+            2+                   \ ." [" i .  ." , " dup . ." ]  "
+         DUP +LOOP
+         2/ ;
+
+

@@ -1,0 +1,58 @@
+\ Hs/Forth User Variables.
+\ Since I lost the manual and I don't know what all these do ! :-)
+
+\ multi-task users
+PORT#
+PRIORITY
+TASK-ID
+TASK-MAIL
+TASK-STAT
+TASK-BUFS
+TASK-STACK
+TASK-FLAG
+TASK-LINK
+
+\ last user-var
+SOURCE-ID
+?.VOC
+AUTO-END
+COLOR
+W#
+SEG-SIZE
+MAXPARA
+MINPARA
+PATHS
+SCR
+OFFSET
+INPUT
+HLD
+MHANDLE
+R#
+COLUMN
+OUTPUT
+FILE
+#E
+SEG
+ERROR#
+HANDLE
+?#ABORT
+BLK
+TIBSEG
+#TIB
+SPAN
+ASMSEG
+LISTSEG
+DPL
+BASE
+STATE
+WARNING
+WIDTH
+VAR-LINK
+FENCE
+CURRENT
+VOC-LINK
+C/L
+OUT
+>IN
+TIB
+<UVADR>   \ 1st user var

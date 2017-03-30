@@ -1,0 +1,136 @@
+HEX
+\ VOCAB86     An experimental approach to structured vocabulary access.
+\             Copyright 1986, Harvard Softworks
+
+\ **** THIS IS ORIGINAL HSF/FORTH code.  It cannot compile under HSF2000  ****
+
+
+
+200 IS SEG-SIZE
+VOCABULARY ROOT
+ROOT DEFINITIONS
+
+1000 IS SEG-SIZE
+
+: YANK  ( pfa-voc -- )
+        >R  CONTEXT
+        BEGIN  DUP@ 2I@
+        WHILE  DUP@ R@ =
+               IF  DUP@ 2I@ SWAP !
+                   ' ROOT R@ 2I!
+               THEN @ 2+
+        REPEAT
+        DROP RDROP ;
+
+: ALSO'                         \ not a standard word
+        CONTEXT @  [COMPILE] '
+        ( adr adr ) DUP YANK
+        ( adr adr ) DUP CONTEXT !
+        2I!     ; IMMEDIATE
+
+: also ;    \ syntax sugar for this implementation
+
+
+0  ' ROOT  DUP ' FORTH      \ stack these values for later ...
+
+: ONLY
+        ' ROOT CONTEXT
+        BEGIN  DUP@ 2I@
+        WHILE  DDUP   @ 2+ DSWAP !
+        REPEAT DDROP  ; IMMEDIATE
+
+: ORDER  ?.VOC @
+         ?.VOC 0!
+         CONTEXT @
+         BEGIN
+            DUP 2- .WORD
+            2I@ ?DUP
+         0= UNTIL
+         ?.VOC ! ;
+
+ HEX
+: WORDS
+        CONTEXT @  CURRENT !
+        CONTEXT @ 6I@ @ >R
+        LATEST
+        BEGIN
+                OUT @  0>
+                IF
+                   TAB
+                THEN
+                R@  OVER C@L  03F AND  DUP>R  -  DUP  R>  R@ -ROT
+                DUP OUT @ + C/L @ >
+                IF CR THEN TYPEL
+
+                20000 0 DO  I DROP LOOP  \ slow this thing down
+
+                ?TERMINAL
+                IF
+                    CR ." paused"
+                    KEY DROP
+                    CR
+                THEN
+
+                3 - DUP  1+
+                0=
+        UNTIL
+        DROP RDROP ;
+
+DECIMAL
+
+\ other ROOT words that should be include for HSF2000
+SYNONYM FORGET      FORGET
+SYNONYM DEFINITIONS DEFINITIONS
+SYNONYM CODES       CODES
+SYNONYM LISTS       LISTS
+SYNONYM STACKS      STACKS
+SYNONYM FORTHS      FORTHS
+SYNONYM ROOT-SEG    ROOT-SEG
+SYNONYM FORTH       FORTH
+SYNONYM ROOT        ROOT  IMMEDIATE
+
+FORTH DEFINITIONS
+
+ BEHEAD' FORTH
+ BEHEAD' ROOT
+
+( Remember these? 0  ' ROOT  DUP ' FORTH   ) 2I!   2I!
+
+CFA' ONLY  THE VOCABULARY 2I!
+CFA' ONLY  ' SEGMENT !
+
+
+EXIT
+
+\ Instructions
+ONLY            Limits search to ROOT and sets all search links in CONTEXT
+                chain to ROOT.
+voc-name        Makes vocabulary CONTEXT, along with others in its chain.
+ROOT            Makes root CONTEXT without unlinking chains.
+ALSO voc-name  Adds vocabulary to top of context linked list, but YANKs it
+                out of that list first if it is already present.
+
+         This is NOT an implementation of the FORTH83 proposal, but does
+support both 79 and 83 type structures. If you ignore the added words,
+vocabularies link to FORTH.
+        For FORTH83 linkage, limit number of vocabularies to 4 (plus ROOT) and
+build each linked list as needed beginning with ONLY and adding vocabularies
+with ALSO' voc-name.  You can remove the top vocabulary or the one above root
+with YANK (actually you can YANK any vocabulary in this system, but that
+wouldn't transport to FORTH83). The first simulates replacement of the
+transient vocabulary; the latter, roll off at the bottom of the stack.
+
+        More generally, after creating a tree structure you can select search
+order from anywhere in the tree using only the voc-name at that node. Add new
+branches by invoking any vocabulary and ALSO'ing new vocabularies above it.
+For more general network structures it may be necessary to begin with ONLY and
+ALSO' vocabularies for each path as needed. If you ALSO' a vocabulary that is
+already part of a list, that list becomes diverted through the new path.
+
+  Example to compile parts of a program according to 79 or 83
+  standards:
+
+  VOCABULARY F83  F83  DEFINITIONS  FLOAD FORTH83
+  VOCABULARY M-V  FORTH ALSO' F83 ALSO' M-V DEFINITIONS (load F83 words)
+                  FORTH           ALSO' M-V DEFINITIONS (load F79 words)
+

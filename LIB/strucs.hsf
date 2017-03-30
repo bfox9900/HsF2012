@@ -1,0 +1,118 @@
+\ strucs.f   http://forth.sourceforge.net/word/structure/index.html
+
+\ 2008/07/01    modified & tested for HSF2000 with inlined field access
+
+0 [if]
+short description:
+
+    The words STRUCT and END-STRUCT are always used
+    in pairs. In the text between them, the top-of-stack
+    hold a value that is both the sizeof-struct and the
+    current-offset. END-STRUCT will save the last value in
+    the "structname" parameterpart CREATEd by STRUCTURE,
+    and SIZEOF will fetch the value from the "structname"
+    (so, SIZEOF is state-smart).
+
+    When the "structname" is executed later it will in turn
+    CREATE a new word - followed by an ALLOT with the
+    size-value saved by END-STRUCT. The created word
+    behaves just like a VARIABLE. This is called a
+    struct-instance.
+
+    The access of the various parts of the struct-instance
+    and the modifications to the endoffset-value is
+    very different among implementations, but in general
+    they create offsetwords with a global namespace.
+[then]
+
+: STRUCT   ( "name" -- xx offset )
+        68
+        CREATE
+                HERE >body      \ leave the address of the 'sizeof' field on the stack
+                0 DUP ,         \ initial size is zero and left on the stack
+        DOES>                   \ has the address of the sizeof-comma
+                CREATE          \ make a variable )
+                @ ALLOT         \ and make the variable that long
+;
+
+: END-STRUCT ( xx offset -- )
+        SWAP !                  \ store the last endoffset into the sizeof-comma
+        68 ?pairs               \ check for struct..end-struct pairing
+;
+
+: SIZEOF ( "name" -- size )
+        ' >BODY @       \ get the sizeof ...
+        STATE @
+        IF [COMPILE] LITERAL THEN ; IMMEDIATE
+
+\ create a faster field accessing word for run-time
+code @+
+        inline: @
+        inline: +
+        next.
+end-code
+
+: FIELD ( offset field_size "name" -- offset' )
+        CREATE
+                OVER ,          \ store the current end_offset
+                +               \ increase the end_offset by the field_size
+
+        does>
+                @+ ;            \ add the memorized end_offset of the field
+
+\ Words to make your code pretty
+: bytes  ( n -- n) ;
+: integer ( n -- n ) cell ;
+: double ( n -- n) 2 cells ;
+: quad   ( n -- n) 4 cells ;
+: string ( n -- n ) 1+ ;        \ add a 1 byte for the string length counter
+
+\ : buffer ( n -- ) create  allot ;
+
+
+false [if]
+\ =========================================================================
+\ example:
+Decimal
+        struct Addr_Record
+            integer field LINK]
+             double field TOTAL]
+          32 string field NAME]
+          32 string field ADDRESS]
+          32 string field city]
+          32 string field prov]
+          32 string field country]
+           7 string field pcode]
+          20 string field PHONE#]
+        end-struct
+
+\ we need somewhere to put the data...
+
+ create [buffer   sizeof Addr_RECORD allot
+
+
+\ now to access the fields...
+
+        16 [BUFFER LINK] !
+        $" Brian Fox"                   [buffer name] $!
+        $" 116 Settlement Park Ave."    [buffer address] $!
+        $" +1 (416) 471-0322"           [buffer phone#] $!
+        $" Markham"                     [buffer city] $!
+        $" Ontario"                     [buffer Prov] $!
+        $" Canada"                      [buffer country] $!
+        $" L6B 1B6"                     [buffer pcode] $!
+
+\ show the test record
+CR ." Test Addr_record"
+cr ." Size= " sizeof addr_record .  ." bytes"
+cr ." ---------------------------------------"
+        cr [buffer link] ?
+        cr [buffer name] $.
+        cr [buffer address] $.
+        cr [buffer city] $. space [buffer prov] $.
+        cr [buffer country] $.
+        cr [buffer pcode] $.
+        cr [buffer phone#] $.
+
+[then]
+

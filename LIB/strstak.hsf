@@ -1,0 +1,175 @@
+\ strstak.hsf            minimal string stack functions
+\ Chopped up the big strings.hsf file into smaller pieces
+
+\ original concept written for TI-Forth
+\ Brian Fox London Ontario Canada
+\ 15/09/88
+\ reduced to minimum to save space.
+
+\ BASICSTR.hsf has the BASIC style functions
+\ FARstrng.hsf has string handling in FAR segments
+
+HEX
+\ string stack lexicon
+            variable ssp                              \ this is the string stack pointer
+        100 constant ss-width                         \ string stack width
+ss-width 1- constant max$len                          \ biggest string we handle
+
+: +ssp  ( -- ) ss-width ssp +! ;                      \ incr. string stack pointer 1 ss-width
+: clrssp ( -- ) ssp off ;                             \ reset string stack pointer
+: TOP$   ( -- ) SSP @ PAD + ;
+
+ : STRING:   ( n -- )                                 \ creates a ANS/ISO string with embedded max len in 1st byte
+            CREATE  dup c,  0 c, ALLOT                \ compiles as a counted string in memory
+            DOES> ( -- caddr n ) 1+ COUNT ;           \ at run time it returns address and length on the stack (ISO format)
+
+\ String Primitive operations
+
+: maxlen    ( str -- maximum length ) 1- len ;
+: !len      ( n adr -- adr )          swap over c! ;
+\ : pack$     ( adr cnt -- $ )          over 1- c! 1- ;  \ use PLACE instead of this
+
+: new.top$  ( -- top$ )                               \ create a new string on the string stack of maximum length
+            +ssp                                      \ create the space
+            top$
+            00FF over 1- ! ;                          \ set length to 0, maxlen to 255  all in one 2 byte store.
+
+: DROP$     ( -- )                                    \ decr. string stack pointer
+            top$ ss-width - PAD <
+            IF
+              clrssp
+              true abort" String stack underflow"
+            then
+            ss-width negate ssp +!  ;
+
+\ switching to Wil Baden's string words, optimized with INLINE[]
+\ I factored this word out because it is useful
+code ENDSTR  ( str -- addr)                           \ calculate the address at the end of a string
+     inline[ COUNT + ]
+     next.
+end-code
+
+
+: TEXT$ ( delimit-char -- $ )  WORD PUSH$ ;
+
+\ This is for ANS compatibility
+: S"    ( <text..> -- $addr len)
+        state @ 0=
+        if
+            [char] " TEXT$ count
+
+        else
+            postpone $"
+            postpone push$
+            postpone count
+        then ;  immediate
+
+
+\ c" is like $" but places strings on the stack
+ : C"    ( <text..> -- $addr )
+        state @ 0=
+        if
+             [char] " text$
+        else
+            postpone $"
+            postpone push$
+        then ;  immediate
+
+create BL$ 1 c, BL c,                                  \ Blank char as a string
+
+
+\ STRING I/O WORDS:
+\  $!  $.  I refer to as string I/O words. This type of word
+\ must clear the string stack when complete. Since these operators always
+\ DO something with end product string this does not pose much of restriction
+\ to the FORTH programmer and abstracts the details allowing the Forth
+\ programmer to write complex phrases of string language with less concern
+\ about the mechanism at work.
+
+synonym ($!)   $!                                     \ rename for compatibility with my other Forth systems
+
+behead' $!                                            \ remove old $! from dictionary
+
+: $!    ( $adr1 $adr2 -- )  ($!) clrssp ;           \ Re-define $! to clear string stack when complete
+
+: ?SIZE$ ( $1 $2 -- ? )                               \ check if $1 can fit into $2
+      over len over maxlen > ABORT" String overflow" ;
+
+: $MOVE  ( $1 $2 -- ) ?SIZE$ ($!) ;                   \ move string with size checking, do NOT collapse string stack
+
+: $.   ( $addr -- )   $. CLRSSP ;                     \ re-define $. to clear string stack after printing.
+
+\ candy to impress your pascal friends
+: :="  ( $addr -- <text> ) "word swap ($!) ;          \ usage:  name :=" brian fox"
+
+: :=""      ( $addr -- )    dup maxlen 0 fill ;
+
+: TOP$+!    ( caddr n -- top$ ) top$ +place top$ ;    \ append the TOP$ with str
+: >top$     ( caddr n -- ) new.top$ place ;           \ old code:  +ssp top$  $! ;
+: push$     ( caddr n -- top$) >top$ top$ ;           \ push str onto the string stack
+
+\ 17.6.1.0245 /STRING   ( c-addr1 u1 n -- c-addr2 u2 ) slash-string STRING
+\ Adjust the character string at c-addr1 by n characters. The resulting
+\ character string, specified by c-addr2 u2, begins at c-addr1 plus n
+\ characters and is u1 minus n characters long.
+
+code /string ( caddr1 u1 n -- caddr2 u2 )
+             inline[ rot over + rot rot - ]
+             next.
+end-code
+
+
+\ COMPARE
+\ Compare two strings. diff is negative if addr1 u1 is smaller, 0 if
+\ it is equal and positive if it is greater than addr2 u2.
+\ I measured this as being 20% faster than the Assembler
+\ version I wrote when it uses the inlined code words! Whoa!
+\ The wild thing is that this COMPARE is the same speed as the assembler version without INLINE[]!
+\ This is probably because the REPE: CMPSB instructions are deprecated in the Pentium and run slowly
+
+\ inlined code words to speed up the inner workings of the Forth version if available
+code chars?      inline[ over c@ over c@ - ]                  next. end-code
+code nextchar=   inline[ 1+ swap 1+ swap  r> 1- dup >r 0= ]   next. end-code
+code cleanup     inline[ swap c@ swap c@ - rdrop rdrop exit ] next. end-code   \ Rdrop equiv. is r> drop
+
+: compare       ( addr1 u1 addr2 u2 --- diff )
+                rot 2dup - >r
+                min dup
+                if
+                    >r
+                    begin
+                        chars? if  cleanup  then
+                        nextchar=
+                    until
+                    r>
+                then
+                2drop drop r> negate ;
+
+: S>        ( addr1 u1 addr2 u2 -- ? ) compare 0< ;
+: S<        ( addr1 u1 addr2 u2 -- ? ) compare 0> ;
+: S=        ( addr1 u1 addr2 u2 -- ? ) compare 0= ;
+
+include inline2.hsf
+
+
+\ Neil Baud words which have caught on create as fast code primitives
+code C+!     ( n addr -- )                            \ primitive: increment a byte at addr by n
+     inline[  DUP C@ ROT + SWAP C! ]
+     next.
+end-code
+
+: +PLACE  ( addr1 length addr2 -- )                   \ Append addr1 length to addr2
+          2dup 2>r  endstr swap move 2r> c+! ;
+
+code PLACE  ( src n dst -- )
+     inline[ 2DUP C! CHAR+ SWAP MOVE ]                \ copy to counted string. Brad rodriguez '>COUNTED'. 2 CELLS SMALLER!
+     next.
+end-code
+
+: STRING, ( addr len -- )                             \ compile a string at the next available memory (called 'HERE')
+            here  over 1+  allot  place ;
+
+code APPEND-CHAR  ( char string -- )                  \ append char to string
+     inline[ dup>r count dup 1+ r> c! + c! ]
+     next.
+end-code

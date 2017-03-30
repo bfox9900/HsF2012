@@ -1,0 +1,76 @@
+\ forth 2012 structures
+\ A.15 The optional Facility word set
+
+: BEGIN-STRUCTURE  \ -- addr 0 ; -- size
+   CREATE
+     HERE 0 0 ,        \ mark stack, lay dummy
+   DOES> @             \ -- rec-len
+;
+
+: +FIELD  \ n <"name"> -- ; Exec: addr -- 'addr
+   CREATE OVER , +
+   DOES> @  +
+;
+
+: END-STRUCTURE  \ addr n --
+   SWAP ! ;          \ set len
+   
+\ alternate form
+0 constant struc
+: endstruc   constant ;
+
+: FIELD:    ( n1 "name" -- n2 ; addr1 -- addr2 )   ALIGNED 1 CELLS +FIELD ;
+: 2FIELD:   ( d1 "name" -- d2 ; addr1 -- addr2 )   ALIGNED 2 CELLS +FIELD ;
+: CFIELD:   ( n1 "name" -- n2 ; addr1 -- addr2 )           1 CHARS +FIELD ;
+: CELLS:                                           DUP 1 < ABORT" CELLS: <= 0" CELLS +FIELD ;
+: CHARS:                                           DUP 1 < ABORT" CHARS: <= 0" CHARS +FIELD ;
+
+FLOATING [IF]
+
+: FFIELD:   ( n1 "name" -- n2 ; addr1 -- addr2 )   FALIGNED  1 FLOATS  +FIELD ;
+: SFFIELD:  ( n1 "name" -- n2 ; addr1 -- addr2 )   SFALIGNED 1 SFLOATS +FIELD ;
+: DFFIELD:  ( n1 "name" -- n2 ; addr1 -- addr2 )   DFALIGNED 1 DFLOATS +FIELD ;
+
+[THEN]
+\ ===================================================================
+
+0 [if]
+\ example: using [ ] brackets as a naming convention to identity structures and fields
+
+struc      
+       field: rec#]
+    32 chars: name]
+    32 chars: family]
+    64 chars: address]
+    32 chars: city]
+    15 chars: prov]
+    25 chars: country]
+      2field: salary]
+endstruc employee-record       \ record the size as a constant
+
+employee-record buffer: [employee      \ and make a buffer that size
+
+: loadrec
+                   1 [employee rec#] !
+           s" Brian" [employee name] PLACE
+           s" Fox"   [employee family] PLACE
+           s" 116 Settlement Park Ave." [employee address] PLACE
+           s" Markham" [employee city] PLACE
+           s" Ontario" [employee prov] PLACE
+           s" Canada"  [employee country] PLACE
+           85000.00    [employee salary] 2!
+;
+
+: write$   cr $. ;
+
+: .rec
+        cr [employee rec#] ?
+           [employee name] write$
+           [employee family] write$
+           [employee address] write$
+           [employee city] write$
+           [employee prov] write$
+           [employee country] write$
+           [employee salary] cr ." $" 2@ d.
+;
+[then]

@@ -1,0 +1,76 @@
+\ words.hsf  pulled from original toolbox by B. Fox
+
+\ *** simplified version ***
+
+\ This project needed special attention so I pulled it from Jims Toolbox file
+\ Added colour words display.
+
+\ Apr 2008 Complete re-design.  Since the context vocabulary is always kept in the
+\ ES register, we can simplify everthing to do with moving through the word
+\ lists.  No more seg:addr combos to deal with !! Ya!
+\ What was Jim Kalihan thinking? ( original author HS/Forth)
+
+
+\ all addresses are assumed to be in the ES segment
+HEX
+: cnt@  ( addr -- cnt )
+        C@E 03F and ;
+
+\ special TYPE that types from the ES segment
+: es:type ( addr cnt -- )
+        bounds
+        do
+          i C@E emit
+        loop ;
+
+\ from LATEST defined word, link back to the PREVIOUS word in the list
+
+: PREVIOUS ( adr -- adr_previous_word) 
+           DUP CNT@ - CELL- 1- ;
+
+
+variable totalwords
+: .totalwords
+        cr totalwords ? ." words displayed" cr ;
+
+
+: >txt ( adr -- txtadr cnt )       \ convert address to start of the text
+        DUP CNT@ dup>R - r> ;
+
+\ given the name address of a word, print it to the output device
+:  .word ( adr -- )     \ assumes ES segment is the context of the word
+        >txt ( adr n ) ES:TYPE   
+        totalwords 1+! ;
+
+hex
+\ WORDS **************************************************************
+
+: WORDS ( -- )
+        cr
+        totalwords off
+        CONCUR                  \ CONTEXT @  CURRENT !
+        LATEST ( adr)           \ set ES to DEFSEG,  @ address of newest word
+        BEGIN
+            DUP .word TAB
+            \ 5 MS  \ pausescreen
+            ( adr) PREVIOUS            \ find the previous word in the list
+            DUP CNT@ 0 <=                 \ is the previous word length=0?
+             over 0< or                 \ had to add this second test because PREVIOUS returned a neg. number with last word???
+        UNTIL
+        DROP
+        .totalwords ;
+
+EXIT
+
+: WORDLINKS
+
+      CONCUR
+      LATEST
+      BEGIN
+           DUP 5 .R  tab
+           PREVIOUS
+           DUP CNT@ DUP 3 .r 0=
+      UNTIL
+      DROP ;
+
+Decimal

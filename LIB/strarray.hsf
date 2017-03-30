@@ -1,0 +1,156 @@
+\ Rosetta strings
+
+0 [IF]
+The philosphy of Chuck Moore, the creator of Forth was that he did not want
+to write code for something he may never use. General purpose code was never
+optimal enough for him. So Forth has very few pre-fab data structures.
+
+His solution was to distill his language into a set of very simple routines that control the hardware directly.
+This is a cardinal error by conventional thinking but Forth makes it pretty simple and the freedom is eye-opening.
+
+By separating the return stack from the parameter stack Forth allows
+a very seamless way to connect these simple routines into higher level functions by concatenating.
+The stack management sounds crazy, but in fact, factoring allows you to manage only 2 or 3 parameters per function.
+
+In this example we are configuring memory directly. There are no "pointers".
+They are just addresses in memory.  We use one of the early forms of Object
+creation with the CREATE DOES> combination in Forth.
+
+The code is heavily commented to explain what is going on for those un-familiar
+with Forth.
+[THEN]
+
+
+
+
+
+\ Explanation of this simple string array
+
+\    [----------------HEADER------------]  [---------------------  data ---------------------]
+\     strlength , maxstrings , counter, |  | len-byte , bytes , len-byte , bytes , etc...
+\                                         ^
+\                                         |
+\                 base-address is here ---
+
+decimal
+: ],   ] postpone literal ;  immediate            \ interpret an expression and compile as literal number
+
+: strings: ( no.  size -- )
+          create                                  \ create the name in Forth dictionary
+                 2dup  ,  ,                       \ compile no. and length into memory (using comma operator)
+                 0 ,                              \ compile a cell to keep track of strings added to the array
+                 swap 1+ swap                     \ add 1 to no. of strings
+                 * here over erase                \ compute total byte count and erase memory at HERE (0 filled)
+                 allot                            \ allocate the bytes ( simply moves mem pointer forward)
+
+          ( run time action )
+          does> [ 3 cells ],  + ;                 \ skip past the parameters and return base address
+
+
+
+\ create named access to the array header cells.
+: items  ( base-addr -- addr)     cell - ;
+: maxfld ( base-addr -- addr)  [ 2 cells ], - ;
+: fldlen ( base-addr -- addr)  [ 3 cells ], - ;
+: lsize  ( base-addr -- n)   dup items swap fldlen * ;
+
+: []    ( n base-addr -- addr) dup fldlen @ rot * + ;  \ calculate nth string from base-address
+
+
+\ ===================================================================
+\ list operators
+
+: foreach  ( list -- list limit index)  dup items @  0 ;
+
+defer list-action
+
+: map[]   ( list -- list )        \ usage:  MYLIST MAP[] .PRINT
+          '   is list-action
+          foreach
+          ?do
+              i over [] list-action
+          loop ;
+
+: .add    ( addr len list -- )
+          >R                                               \ copy list address on return stack
+          r@ items @  r@ maxfld @ = abort" Array is full"
+          r@ items @  r@ [] place                          \ place string at next available item location
+          1 r> items +! ;                                  \ use the copy to increment items
+
+: .empty  ( list -- )  ITEMS OFF ;                         \ setting ITEMS to zero empties the array
+
+: .print   ( addr -- )  COUNT TYPE ;                       \ prints a counted string or the first item of a list
+: .list    ( list -- list )
+            foreach
+            ?do
+               I over [] .print space                      \ index the array with I and print each item comma delimited
+            loop  ;
+
+: .includes:   ( list -- )                                 \ MYLIST .includes: berries,cherries,beans,kiwi
+            >r
+            begin
+                [CHAR] , parse dup 0>
+            WHILE
+                r@ .ADD
+            REPEAT
+            r> drop ;
+
+: .upper    
+            foreach
+            ?do
+               I over [] UPPER
+            loop ;
+
+: .lower    
+            foreach
+            ?do
+               I over [] LOWER
+            loop ;
+
+
+HEX
+: .Title   ( list -- list)                                             \ 1ST letter set to caps
+            foreach
+            ?do
+               I over [] 1+  DUP c@ 5F and swap c!
+            loop ;
+
+
+0 value ldst       \ "destinatin list" simplify working with 2 lists, not ideal
+
+: .CONCAT   ( list1 list2 -- )
+            swap to ldst
+            foreach
+            ?do
+               I over [] count ldst .add
+            loop
+            drop ldst ;
+
+\ TEST CODE
+
+24 32 STRINGS: fruit
+24 32 STRINGS: VEGGIES
+
+fruit items ?
+fruit maxfld ?
+fruit fldlen ?
+
+S" Apples"  fruit .add
+S" Oranges" fruit .add
+fruit items ?
+
+S" Pears"   fruit .add
+S" Pomegranates" fruit .add
+fruit items ?
+
+cr fruit .list
+
+veggies .includes: cucumber,turnip,carrots,potatoes,
+
+
+ EXIT
+
+fruit .includes: Peaches,Grapes,Kiwis,Watermelons,Honey Dews,Plums,Nectarines,Juicy Fruit
+
+ 
+

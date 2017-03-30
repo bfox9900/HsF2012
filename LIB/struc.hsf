@@ -1,0 +1,65 @@
+\ struc words from DDJ june 1987
+\ In my experience this is the simplest implementation of structures for Forth
+\ that I have found.
+
+\ improved performance by using inline:
+
+\  2 CONSTANT WSIZE   ( replaced by CELL in ANS/ISO Forth )
+
+
+: <STRUC>
+        CREATE ,
+        DOES>  @ + ;
+
+code <struc:>
+        inline: dup@
+        inline: dup>r
+        inline: rot
+        inline: +
+        inline: swap
+        inline: !
+        inline: r>
+        next.
+end-code
+
+: STRUC:  CREATE ,
+          DOES>
+                <struc:>
+               ( DUP@  DUP>R ROT + SWAP !  R>)  <STRUC> ;
+
+: STRUC-ARRAY:  ( #slots, slot-size -- <name>)
+                CREATE
+                       DUP , * ALLOT
+                DOES>  ( subscript -- addr)
+                       DUP @ ROT * + cell + ;
+
+: sizeof  ( -- <struc> n )
+          pfa-of @
+          STATE @  IF [COMPILE] LITERAL THEN ; IMMEDIATE
+
+\ Words to make your code pretty
+: bytes  ( n -- n) ;
+: double ( n -- n) 4* ;
+: quad   ( n -- n) 8* ;
+
+
+
+\ example:
+
+        0 STRUC: record
+               cell record LINK]
+            2 cells record TOTAL]
+           20 bytes record NAME]
+           20 bytes record ADDRESS]
+           10 bytes record PHONE#]
+
+       CREATE [BUFFER  sizeof RECORD ALLOT
+
+\ now to access a fields you use:
+        16 [BUFFER LINK] !
+
+        $" Brian Fox" [buffer name] $!
+           [BUFFER NAME] $.
+
+        $" 68 HAWTHORNE RD." [BUFFER ADDRESS] $!
+
