@@ -185,7 +185,8 @@ behead' $!                                            \ remove old $! from dicti
 : RIGHT$    ( $addr1 n  -- top$)   >r COUNT R> OVER MIN /STRING  NEW.TOP$ PLACE TOP$ ;
 
 : MID$      ( adr$ start #char  -- top$) new.top$  2>R  + 1+ 2R> +place  top$ ;
-: $POS      ( adr$ char -- position)  swap cmember? ; : STR$  ( n -- top$) 0 <# #s #> >new:top$ ;
+: $POS      ( adr$ char -- position)  swap cmember? ; 
+: STR$      ( n -- top$) 0 <# #s #> >new:top$ ;
 : +$        ( $1 $2 -- top$ ) SWAP >R COUNT R> PUSH$ +PLACE TOP$ ;
 : $VAL      ( adr$ - n or dn ) >number the dpl -3fff < if drop then ;
 
